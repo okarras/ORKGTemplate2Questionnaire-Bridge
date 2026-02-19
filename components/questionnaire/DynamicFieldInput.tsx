@@ -16,6 +16,8 @@ interface DynamicFieldInputProps {
   onChange: (value: string | number | boolean) => void;
   /** class_id for IRI/resource fields - fetches options of this ORKG class */
   classId?: string;
+  /** Link to create new ORKG resource (e.g. https://orkg.org/resources/create?classes={class_id}) */
+  createLink?: string;
 }
 
 const fieldInputClass = "w-full data-[focus=true]:border-primary";
@@ -35,6 +37,7 @@ export function DynamicFieldInput({
   value,
   onChange,
   classId,
+  createLink,
 }: DynamicFieldInputProps) {
   const id = `field-${propertyId}`;
 
@@ -157,6 +160,7 @@ export function DynamicFieldInput({
           value={value}
           onChange={onChange}
           classId={classId}
+          createLink={createLink}
         />
       );
 

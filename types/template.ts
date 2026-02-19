@@ -24,6 +24,8 @@ export interface SubtemplateProperty {
   subtemplate_id?: string;
   subtemplate_label?: string;
   class_id?: string;
+  /** Link to create a new ORKG resource of this class (e.g. https://orkg.org/resources/create?classes={class_id}) */
+  create_link?: string;
   subtemplate_properties?: Record<string, SubtemplateProperty>;
 }
 

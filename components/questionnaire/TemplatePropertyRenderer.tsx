@@ -65,6 +65,7 @@ export function TemplatePropertyRenderer({
           value={value}
           onChange={onChange}
           classId={property.class_id}
+          createLink={property.create_link}
         />
       </div>
     );
@@ -83,6 +84,7 @@ export function TemplatePropertyRenderer({
             value={value}
             onChange={onChange}
             classId={property.class_id}
+            createLink={property.create_link}
           />
         </div>
       </CardHeader>

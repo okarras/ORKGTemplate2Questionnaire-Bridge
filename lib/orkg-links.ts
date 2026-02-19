@@ -17,6 +17,14 @@ export function getOrkgClassLink(classId: string): string | null {
   return null;
 }
 
+/** Link to create a new ORKG resource of a given class */
+export function getOrkgCreateResourceLink(classId: string): string | null {
+  if (classId?.match(/^C\d+$/)) {
+    return `https://orkg.org/resources/create?classes=${classId}`;
+  }
+  return null;
+}
+
 export function getOrkgResourceLink(resourceId: string): string | null {
   if (resourceId?.match(/^R\d+$/)) {
     return `https://orkg.org/resource/${resourceId}`;

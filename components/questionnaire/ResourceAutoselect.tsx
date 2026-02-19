@@ -5,7 +5,10 @@ import { Select, SelectItem } from "@heroui/select";
 import { Spinner } from "@heroui/spinner";
 import { Link } from "@heroui/link";
 import { FieldLabel } from "./FieldLabel";
-import { getOrkgResourceLinkFromIri } from "@/lib/orkg-links";
+import {
+  getOrkgResourceLinkFromIri,
+  getOrkgCreateResourceLink,
+} from "@/lib/orkg-links";
 
 interface OrkgResourceOption {
   id: string;
@@ -19,6 +22,8 @@ interface ResourceAutoselectProps {
   value: string | number | boolean;
   onChange: (value: string | number | boolean) => void;
   classId?: string;
+  /** Link to create new ORKG resource (e.g. from template mapping) */
+  createLink?: string;
 }
 
 export function ResourceAutoselect({
@@ -28,7 +33,10 @@ export function ResourceAutoselect({
   value,
   onChange,
   classId,
+  createLink,
 }: ResourceAutoselectProps) {
+  const createResourceUrl =
+    createLink ?? (classId ? getOrkgCreateResourceLink(classId) : null);
   const [resources, setResources] = useState<OrkgResourceOption[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -60,57 +68,71 @@ export function ResourceAutoselect({
 
   if (loading) {
     return (
-      <div className="space-y-2">
-        <FieldLabel label={label} propertyId={propertyId} classId={classId} />
-        <div className="flex items-center gap-3 rounded-lg border border-default-200 bg-default-50/50 px-4 py-3">
-          <Spinner size="sm" color="default" />
-          <span className="text-sm text-default-500">
-            Loading ORKG options...
-          </span>
+      <div className="flex flex-col gap-1.5">
+        <div className="space-y-2">
+          <FieldLabel label={label} propertyId={propertyId} classId={classId} />
+          <div className="flex items-center gap-3 rounded-lg border border-default-200 bg-default-50/50 px-4 py-3">
+            <Spinner size="sm" color="default" />
+            <span className="text-sm text-default-500">
+              Loading ORKG options...
+            </span>
+          </div>
         </div>
+        {createResourceUrl && (
+          <Link
+            isExternal
+            href={createResourceUrl}
+            size="sm"
+            className="text-primary w-fit"
+            aria-label="Create new resource in ORKG"
+          >
+            Create new in ORKG
+          </Link>
+        )}
       </div>
     );
   }
 
   return (
-    <Select
-      id={id}
-      variant="bordered"
-      label={<FieldLabel label={label} propertyId={propertyId} classId={classId} />}
-      placeholder={placeholder ?? "Select from options..."}
-      selectedKeys={strValue ? new Set([strValue]) : new Set()}
-      onSelectionChange={(keys) => {
-        const selected = Array.from(keys)[0];
-        onChange(selected ? String(selected) : "");
-      }}
-      labelPlacement="outside"
-      disableAnimation={false}
-      scrollShadowProps={{ visibility: "top-bottom" }}
-      listboxProps={{
-        emptyContent: "No ORKG resources found for this field",
-        classNames: {
-          list: "py-1",
-        },
-      }}
-      classNames={{
-        trigger:
-          "border-default-200 bg-transparent min-h-11 shadow-none hover:bg-default-100 data-[hover=true]:bg-default-100 data-[focus=true]:border-default-400 data-[focus=true]:bg-transparent",
-        value: "text-foreground",
-        listboxWrapper: "max-h-[280px]",
-      }}
-      className="w-full"
-      isDisabled={resources.length === 0}
-      description={
-        resources.length === 0
-          ? undefined
-          : `${resources.length} option${resources.length === 1 ? "" : "s"} from ORKG`
-      }
-      popoverProps={{
-        classNames: {
-          content: "p-0",
-        },
-      }}
-    >
+    <div className="flex flex-col gap-1.5">
+      <Select
+        id={id}
+        variant="bordered"
+        label={<FieldLabel label={label} propertyId={propertyId} classId={classId} />}
+        placeholder={placeholder ?? "Select from options..."}
+        selectedKeys={strValue ? new Set([strValue]) : new Set()}
+        onSelectionChange={(keys) => {
+          const selected = Array.from(keys)[0];
+          onChange(selected ? String(selected) : "");
+        }}
+        labelPlacement="outside"
+        disableAnimation={false}
+        scrollShadowProps={{ visibility: "top-bottom" }}
+        listboxProps={{
+          emptyContent: "No ORKG resources found for this field",
+          classNames: {
+            list: "py-1",
+          },
+        }}
+        classNames={{
+          trigger:
+            "border-default-200 bg-transparent min-h-11 shadow-none hover:bg-default-100 data-[hover=true]:bg-default-100 data-[focus=true]:border-default-400 data-[focus=true]:bg-transparent",
+          value: "text-foreground",
+          listboxWrapper: "max-h-[280px]",
+        }}
+        className="w-full"
+        isDisabled={resources.length === 0}
+        description={
+          resources.length === 0
+            ? undefined
+            : `${resources.length} option${resources.length === 1 ? "" : "s"} from ORKG`
+        }
+        popoverProps={{
+          classNames: {
+            content: "p-0",
+          },
+        }}
+      >
       {resources.map((r) => {
         const orkgUrl = getOrkgResourceLinkFromIri(r.id);
         const displayLabel = r.label || r.id.split("/").pop() || r.id;
@@ -156,6 +178,18 @@ export function ResourceAutoselect({
           </SelectItem>
         );
       })}
-    </Select>
+      </Select>
+      {createResourceUrl && (
+        <Link
+          isExternal
+          href={createResourceUrl}
+          size="sm"
+          className="text-primary w-fit"
+          aria-label="Create new resource in ORKG"
+        >
+          Create new in ORKG
+        </Link>
+      )}
+    </div>
   );
 }
