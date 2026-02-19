@@ -107,7 +107,7 @@ export function ResourceAutoselect({
         }}
         labelPlacement="outside"
         disableAnimation={false}
-        scrollShadowProps={{ visibility: "top-bottom" }}
+        scrollShadowProps={{ visibility: "both" }}
         listboxProps={{
           emptyContent: "No ORKG resources found for this field",
           classNames: {
