@@ -15,12 +15,16 @@ interface OrkgResourceOption {
   label: string;
 }
 
+type ResourceValue = string | number | boolean | string[];
+
 interface ResourceAutoselectProps {
   propertyId: string;
   label: string;
   placeholder?: string;
-  value: string | number | boolean;
-  onChange: (value: string | number | boolean) => void;
+  value: ResourceValue;
+  onChange: (value: ResourceValue) => void;
+  /** When true, allows selecting multiple resources (one-to-many cardinality) */
+  multiselect?: boolean;
   classId?: string;
   /** Link to create new ORKG resource (e.g. from template mapping) */
   createLink?: string;
@@ -32,6 +36,7 @@ export function ResourceAutoselect({
   placeholder,
   value,
   onChange,
+  multiselect = false,
   classId,
   createLink,
 }: ResourceAutoselectProps) {
@@ -64,7 +69,6 @@ export function ResourceAutoselect({
   }, [propertyId, classId]);
 
   const id = `field-${propertyId}`;
-  const strValue = typeof value === "string" ? value : "";
 
   if (loading) {
     return (
@@ -99,11 +103,25 @@ export function ResourceAutoselect({
         id={id}
         variant="bordered"
         label={<FieldLabel label={label} propertyId={propertyId} classId={classId} />}
-        placeholder={placeholder ?? "Select from options..."}
-        selectedKeys={strValue ? new Set([strValue]) : new Set()}
+        placeholder={
+          placeholder ??
+          (multiselect ? "Select one or more from options..." : "Select from options...")
+        }
+        selectionMode={multiselect ? "multiple" : "single"}
+        selectedKeys={
+          multiselect
+            ? new Set(Array.isArray(value) ? value : [])
+            : typeof value === "string" && value
+              ? new Set([value])
+              : new Set()
+        }
         onSelectionChange={(keys) => {
-          const selected = Array.from(keys)[0];
-          onChange(selected ? String(selected) : "");
+          if (multiselect) {
+            onChange(Array.from(keys) as string[]);
+          } else {
+            const selected = Array.from(keys)[0];
+            onChange(selected ? String(selected) : "");
+          }
         }}
         labelPlacement="outside"
         disableAnimation={false}

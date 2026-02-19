@@ -7,13 +7,17 @@ import { ResourceAutoselect } from "./ResourceAutoselect";
 import { FieldLabel } from "./FieldLabel";
 import type { InputType } from "@/types/template";
 
+type FieldValue = string | number | boolean | string[];
+
 interface DynamicFieldInputProps {
   propertyId: string;
   label: string;
   inputType: InputType;
   placeholder?: string;
-  value: string | number | boolean;
-  onChange: (value: string | number | boolean) => void;
+  value: FieldValue;
+  onChange: (value: FieldValue) => void;
+  /** Cardinality from template: "one to one" = single select, "one to many" = multiselect */
+  cardinality?: string;
   /** class_id for IRI/resource fields - fetches options of this ORKG class */
   classId?: string;
   /** Link to create new ORKG resource (e.g. https://orkg.org/resources/create?classes={class_id}) */
@@ -29,6 +33,9 @@ const SELECT_OPTIONS = [
   { value: "other", label: "Other" },
 ];
 
+const isOneToMany = (cardinality?: string) =>
+  cardinality?.toLowerCase() === "one to many";
+
 export function DynamicFieldInput({
   propertyId,
   label,
@@ -36,10 +43,12 @@ export function DynamicFieldInput({
   placeholder,
   value,
   onChange,
+  cardinality,
   classId,
   createLink,
 }: DynamicFieldInputProps) {
   const id = `field-${propertyId}`;
+  const multiselect = isOneToMany(cardinality);
 
   switch (inputType) {
     case "text":
@@ -105,22 +114,34 @@ export function DynamicFieldInput({
         <Select
           id={id}
           label={<FieldLabel label={label} propertyId={propertyId} classId={classId} />}
-          placeholder={placeholder ?? `Select ${label.toLowerCase()}...`}
+          placeholder={
+            placeholder ??
+            (multiselect
+              ? `Select one or more ${label.toLowerCase()}...`
+              : `Select ${label.toLowerCase()}...`)
+          }
+          selectionMode={multiselect ? "multiple" : "single"}
           selectedKeys={
-            typeof value === "string" && value ? new Set([value]) : new Set()
+            multiselect
+              ? new Set(Array.isArray(value) ? value : [])
+              : typeof value === "string" && value
+                ? new Set([value])
+                : new Set()
           }
           onSelectionChange={(keys) => {
-            const selected = Array.from(keys)[0];
-            onChange(selected ? String(selected) : "");
+            if (multiselect) {
+              onChange(Array.from(keys) as string[]);
+            } else {
+              const selected = Array.from(keys)[0];
+              onChange(selected ? String(selected) : "");
+            }
           }}
           labelPlacement="outside"
           classNames={{ trigger: "border-default-200 data-[focus=true]:border-primary" }}
           className={fieldInputClass}
         >
           {SELECT_OPTIONS.map((opt) => (
-            <SelectItem key={opt.value}>
-              {opt.label}
-            </SelectItem>
+            <SelectItem key={opt.value}>{opt.label}</SelectItem>
           ))}
         </Select>
       );
@@ -159,6 +180,7 @@ export function DynamicFieldInput({
           placeholder={placeholder}
           value={value}
           onChange={onChange}
+          multiselect={multiselect}
           classId={classId}
           createLink={createLink}
         />

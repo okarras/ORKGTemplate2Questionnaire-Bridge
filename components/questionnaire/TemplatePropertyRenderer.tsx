@@ -13,12 +13,14 @@ import type {
   EnrichedSubtemplateProperty,
 } from "@/types/template";
 
+type PropertyValue = string | number | boolean | string[];
+
 interface TemplatePropertyRendererProps {
   propertyId: string;
   property: SubtemplateProperty | EnrichedSubtemplateProperty;
   depth?: number;
-  value?: string | number | boolean;
-  onValueChange?: (value: string | number | boolean) => void;
+  value?: PropertyValue;
+  onValueChange?: (value: PropertyValue) => void;
 }
 
 export function TemplatePropertyRenderer({
@@ -28,13 +30,11 @@ export function TemplatePropertyRenderer({
   value: controlledValue,
   onValueChange: controlledOnChange,
 }: TemplatePropertyRendererProps) {
-  const [internalValue, setInternalValue] = useState<string | number | boolean>(
-    ""
-  );
+  const [internalValue, setInternalValue] = useState<PropertyValue>("");
   const isControlled = controlledOnChange !== undefined;
   const value = isControlled ? controlledValue ?? "" : internalValue;
   const onChange = useCallback(
-    (v: string | number | boolean) => {
+    (v: PropertyValue) => {
       if (isControlled) {
         controlledOnChange?.(v);
       } else {
@@ -64,6 +64,7 @@ export function TemplatePropertyRenderer({
           placeholder={property.description}
           value={value}
           onChange={onChange}
+          cardinality={property.cardinality}
           classId={property.class_id}
           createLink={property.create_link}
         />
@@ -83,6 +84,7 @@ export function TemplatePropertyRenderer({
             placeholder={property.description}
             value={value}
             onChange={onChange}
+            cardinality={property.cardinality}
             classId={property.class_id}
             createLink={property.create_link}
           />
