@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+
 import {
   ORKG_SPARQL_ENDPOINT,
   buildResourcesQuery,
@@ -23,7 +24,7 @@ export async function GET(request: NextRequest) {
   if (!predicateId && !classId) {
     return NextResponse.json(
       { error: "Missing predicateId or classId" },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -32,6 +33,7 @@ export async function GET(request: NextRequest) {
     classId: classId ?? undefined,
     limit: Number.isNaN(limit) ? 500 : Math.min(limit, 1000),
   });
+
   if (!query) {
     return NextResponse.json({ resources: [] });
   }
@@ -51,7 +53,11 @@ export async function GET(request: NextRequest) {
     }
 
     const contentType = response.headers.get("content-type") ?? "";
-    if (!contentType.includes("application/json") && !contentType.includes("sparql-results+json")) {
+
+    if (
+      !contentType.includes("application/json") &&
+      !contentType.includes("sparql-results+json")
+    ) {
       return NextResponse.json({ resources: [] });
     }
 
@@ -60,6 +66,7 @@ export async function GET(request: NextRequest) {
     const resources: OrkgResourceOption[] = bindings.map((b) => {
       const iri = b.o?.value ?? "";
       const label = b.oLabel?.value ?? iri.split("/").pop() ?? iri;
+
       return { id: iri, label };
     });
 

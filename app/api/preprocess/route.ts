@@ -1,6 +1,8 @@
-import { NextRequest, NextResponse } from "next/server";
-import { enrichTemplateMapping } from "@/lib/preprocessing/enrich-template-mapping";
 import type { TemplateMapping } from "@/types/template";
+
+import { NextRequest, NextResponse } from "next/server";
+
+import { enrichTemplateMapping } from "@/lib/preprocessing/enrich-template-mapping";
 
 /**
  * POST /api/preprocess
@@ -15,20 +17,21 @@ export async function POST(request: NextRequest) {
     if (!mapping || typeof mapping !== "object") {
       return NextResponse.json(
         { error: "Missing or invalid mapping" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     const enriched = await enrichTemplateMapping(mapping);
+
     return NextResponse.json(enriched);
   } catch (err) {
     console.error("Preprocessing error:", err);
+
     return NextResponse.json(
       {
-        error:
-          err instanceof Error ? err.message : "Preprocessing failed",
+        error: err instanceof Error ? err.message : "Preprocessing failed",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

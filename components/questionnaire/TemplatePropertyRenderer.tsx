@@ -1,26 +1,37 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import { Card, CardBody, CardHeader } from "@heroui/card";
-import { Accordion, AccordionItem } from "@heroui/accordion";
-import { DynamicFieldInput } from "./DynamicFieldInput";
-import {
-  getInputTypeForProperty,
-  getInputTypeFromValueType,
-} from "./input-type-utils";
 import type {
   SubtemplateProperty,
   EnrichedSubtemplateProperty,
 } from "@/types/template";
 
+import { useState, useCallback } from "react";
+import { Card, CardBody, CardHeader } from "@heroui/card";
+import { Accordion, AccordionItem } from "@heroui/accordion";
+
+import { DynamicFieldInput } from "./DynamicFieldInput";
+import {
+  getInputTypeForProperty,
+  getInputTypeFromValueType,
+} from "./input-type-utils";
+import type { FormValue } from "./QuestionnaireForm";
+
 type PropertyValue = string | number | boolean | string[];
+
+function toPropertyValue(v: FormValue | undefined): PropertyValue {
+  if (v === undefined || v === null) return "";
+  if (typeof v === "object" && !Array.isArray(v) && "_" in v) return (v as { _?: PropertyValue })._ ?? "";
+  if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") return v;
+  if (Array.isArray(v)) return v;
+  return "";
+}
 
 interface TemplatePropertyRendererProps {
   propertyId: string;
   property: SubtemplateProperty | EnrichedSubtemplateProperty;
   depth?: number;
-  value?: PropertyValue;
-  onValueChange?: (value: PropertyValue) => void;
+  value?: FormValue;
+  onValueChange?: (value: FormValue) => void;
 }
 
 export function TemplatePropertyRenderer({
@@ -32,16 +43,28 @@ export function TemplatePropertyRenderer({
 }: TemplatePropertyRendererProps) {
   const [internalValue, setInternalValue] = useState<PropertyValue>("");
   const isControlled = controlledOnChange !== undefined;
-  const value = isControlled ? controlledValue ?? "" : internalValue;
+
+  const value = isControlled
+    ? toPropertyValue(controlledValue)
+    : internalValue;
+
   const onChange = useCallback(
     (v: PropertyValue) => {
       if (isControlled) {
-        controlledOnChange?.(v);
+        const hasSub =
+          property.subtemplate_properties &&
+          Object.keys(property.subtemplate_properties).length > 0;
+        const current = controlledValue;
+        if (hasSub && typeof current === "object" && current !== null && !Array.isArray(current)) {
+          controlledOnChange?.({ ...current, _: v });
+        } else {
+          controlledOnChange?.(v);
+        }
       } else {
         setInternalValue(v);
       }
     },
-    [isControlled, controlledOnChange]
+    [isControlled, controlledOnChange, controlledValue, property.subtemplate_properties],
   );
 
   const enrichedProp = property as EnrichedSubtemplateProperty;
@@ -58,15 +81,15 @@ export function TemplatePropertyRenderer({
     return (
       <div className="w-full">
         <DynamicFieldInput
-          propertyId={propertyId}
-          label={property.label}
-          inputType={inputType}
-          placeholder={property.description}
-          value={value}
-          onChange={onChange}
           cardinality={property.cardinality}
           classId={property.class_id}
           createLink={property.create_link}
+          inputType={inputType}
+          label={property.label}
+          placeholder={property.description}
+          propertyId={propertyId}
+          value={value}
+          onChange={onChange}
         />
       </div>
     );
@@ -78,15 +101,15 @@ export function TemplatePropertyRenderer({
       <CardHeader className="flex flex-col items-start gap-1 border-b border-default-200/50 px-4 pt-4">
         <div className="w-full">
           <DynamicFieldInput
-            propertyId={propertyId}
-            label={property.label}
-            inputType={inputType}
-            placeholder={property.description}
-            value={value}
-            onChange={onChange}
             cardinality={property.cardinality}
             classId={property.class_id}
             createLink={property.create_link}
+            inputType={inputType}
+            label={property.label}
+            placeholder={property.description}
+            propertyId={propertyId}
+            value={value}
+            onChange={onChange}
           />
         </div>
       </CardHeader>
@@ -95,28 +118,50 @@ export function TemplatePropertyRenderer({
           <p className="mb-3 text-sm text-default-500">
             {property.description}
           </p>
-          <Accordion variant="bordered" className="gap-0">
+          <Accordion className="gap-0" variant="bordered">
             {Object.entries(property.subtemplate_properties!).map(
               ([subPropId, subProp]) => (
                 <AccordionItem
                   key={subPropId}
                   aria-label={subProp.label}
-                  title={subProp.label}
-                  subtitle={subProp.cardinality}
                   classNames={{
                     title: "text-primary font-medium",
                     trigger: "data-[hover=true]:bg-primary/5",
                   }}
+                  subtitle={subProp.cardinality}
+                  title={subProp.label}
                 >
                   <div className="pb-2">
                     <TemplatePropertyRenderer
-                      propertyId={subPropId}
-                      property={subProp}
                       depth={depth + 1}
+                      property={subProp}
+                      propertyId={subPropId}
+                      value={
+                        typeof controlledValue === "object" &&
+                        controlledValue !== null &&
+                        !Array.isArray(controlledValue)
+                          ? (controlledValue as Record<string, FormValue>)[subPropId]
+                          : undefined
+                      }
+                      onValueChange={(v) => {
+                        if (!controlledOnChange) return;
+                        const hasSub =
+                          property.subtemplate_properties &&
+                          Object.keys(property.subtemplate_properties).length > 0;
+                        const current = controlledValue;
+                        if (hasSub && typeof current === "object" && current !== null && !Array.isArray(current)) {
+                          controlledOnChange({
+                            ...current,
+                            [subPropId]: v,
+                          });
+                        } else {
+                          controlledOnChange({ [subPropId]: v });
+                        }
+                      }}
                     />
                   </div>
                 </AccordionItem>
-              )
+              ),
             )}
           </Accordion>
         </div>

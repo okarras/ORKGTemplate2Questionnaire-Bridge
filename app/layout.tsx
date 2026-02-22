@@ -3,6 +3,8 @@ import { Metadata, Viewport } from "next";
 
 import { Providers } from "./providers";
 
+import { Navbar } from "@/components/navbar";
+import { Footer } from "@/components/footer";
 import { siteConfig } from "@/config/site";
 import { fontSans } from "@/config/fonts";
 
@@ -30,12 +32,19 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html suppressHydrationWarning lang="en" className={fontSans.variable}>
-      <body className="min-h-screen bg-background font-sans antialiased">
+    <html suppressHydrationWarning className={fontSans.variable} lang="en">
+      <body
+        suppressHydrationWarning
+        className="min-h-screen bg-background font-sans antialiased"
+      >
         <Providers themeProps={{ attribute: "class", defaultTheme: "light" }}>
+          <Navbar />
           <main className="container mx-auto max-w-7xl flex-grow px-6 pt-8">
             {children}
           </main>
+          <div className="container mx-auto max-w-7xl px-6">
+            <Footer />
+          </div>
         </Providers>
       </body>
     </html>

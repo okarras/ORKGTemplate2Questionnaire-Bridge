@@ -1,19 +1,21 @@
+import type { OrkgValueType } from "@/types/template";
+
 import {
   ORKG_SPARQL_ENDPOINT,
   buildValueTypeQuery,
   parseValueTypeResult,
   type SparqlResult,
 } from "./orkg-queries";
-import type { OrkgValueType } from "@/types/template";
 
 /**
  * Fetches value type (Literal/IRI/Blank) for a predicate from ORKG SPARQL.
  * Use this from server-side code (API routes, server components).
  */
 export async function fetchValueTypeFromOrkg(
-  predicateId: string
+  predicateId: string,
 ): Promise<OrkgValueType> {
   const query = buildValueTypeQuery(predicateId);
+
   if (!query) return "Literal";
 
   try {
@@ -29,6 +31,7 @@ export async function fetchValueTypeFromOrkg(
     if (!response.ok) return "Literal";
 
     const contentType = response.headers.get("content-type") ?? "";
+
     if (
       !contentType.includes("application/json") &&
       !contentType.includes("sparql-results+json")
@@ -37,6 +40,7 @@ export async function fetchValueTypeFromOrkg(
     }
 
     const result: SparqlResult = await response.json();
+
     return parseValueTypeResult(result);
   } catch {
     return "Literal";

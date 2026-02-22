@@ -12,9 +12,11 @@ PREFIX orkgr: <http://orkg.org/orkg/resource/>
  */
 export function buildValueTypeQuery(predicateId: string): string | null {
   const match = predicateId.match(/^P(\d+)$/);
+
   if (!match) return null;
 
   const predicateVar = `orkgp:P${match[1]}`;
+
   return `
 ${ORKG_PREFIXES}
 SELECT DISTINCT ?oType WHERE {
@@ -37,15 +39,15 @@ LIMIT 100
  */
 export function buildValueTypeQueryWithContext(
   predicateId: string,
-  options?: { contributionClass?: string }
+  options?: { contributionClass?: string },
 ): string | null {
   const match = predicateId.match(/^P(\d+)$/);
+
   if (!match) return null;
 
   const pred = `orkgp:P${match[1]}`;
   const filter =
-    options?.contributionClass &&
-    options.contributionClass.match(/^R\d+$/)
+    options?.contributionClass && options.contributionClass.match(/^R\d+$/)
       ? `
   ?paper orkgp:P31 orkgr:${options.contributionClass} .
   ?s orkgp:P181002|orkgp:P31 ?paper .
@@ -77,7 +79,7 @@ LIMIT 10
  */
 export function buildResourcesQuery(
   predicateId: string,
-  options?: { classId?: string; limit?: number }
+  options?: { classId?: string; limit?: number },
 ): string | null {
   const match = predicateId.match(/^P(\d+)$/);
   const classMatch = options?.classId?.match(/^C(\d+)$/);
@@ -89,6 +91,7 @@ export function buildResourcesQuery(
     const classFilter = classMatch
       ? `  ?o orkgp:P31 orkgc:${options!.classId} .\n`
       : "";
+
     return `
 ${ORKG_PREFIXES}
 PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
@@ -150,13 +153,12 @@ export interface SparqlResult {
 export function parseValueTypeResult(result: SparqlResult): OrkgValueType {
   const bindings = result?.results?.bindings ?? [];
   const types = new Set(
-    bindings
-      .map((b) => b.oType?.value)
-      .filter((v): v is string => Boolean(v))
+    bindings.map((b) => b.oType?.value).filter((v): v is string => Boolean(v)),
   );
 
   if (types.has("IRI")) return "IRI";
   if (types.has("Literal")) return "Literal";
   if (types.has("Blank node")) return "Blank node";
+
   return "Unknown";
 }
