@@ -19,7 +19,7 @@ export function SiteLogo({ size = 40, className }: SiteLogoProps) {
         alt="Dynamic Questionnaire"
         className="dark:hidden"
         height={size}
-        src="/logo.jpg"
+        src="/logo.png"
         width={size}
       />
       <Image
@@ -27,7 +27,7 @@ export function SiteLogo({ size = 40, className }: SiteLogoProps) {
         alt="Dynamic Questionnaire"
         className="hidden dark:block"
         height={size}
-        src="/logo.jpg"
+        src="/logo.png"
         width={size}
       />
     </span>
