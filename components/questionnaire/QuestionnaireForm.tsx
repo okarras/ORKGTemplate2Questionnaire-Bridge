@@ -1,22 +1,51 @@
 "use client";
 
 import type {
+  CustomBlock,
   EnrichedTemplateMapping,
   SubtemplateProperty,
 } from "@/types/template";
 import type { InputType } from "@/types/template";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useState } from "react";
 import Link from "next/link";
 import { Button } from "@heroui/button";
+import { Switch } from "@heroui/switch";
+import {
+  Dropdown,
+  DropdownTrigger,
+  DropdownMenu,
+  DropdownItem,
+  DropdownSection,
+} from "@heroui/dropdown";
 import { PDFDocument, PDFName, PDFString, StandardFonts, rgb } from "pdf-lib";
 
 import { TemplatePropertyRenderer } from "./TemplatePropertyRenderer";
+import {
+  CustomFieldBlock,
+  HtmlBlock,
+  SectionBlock,
+  TextBlock,
+} from "./CustomBlocks";
+import {
+  arrayMove,
+  getBlockSortId,
+  SortableBlockWrapper,
+  SortableContext,
+  useBlockDndSensors,
+  verticalListSortingStrategy,
+} from "./SortableBlockItem";
+import type { DragEndEvent } from "@dnd-kit/core";
+import {
+  DndContext,
+  closestCenter,
+} from "@dnd-kit/core";
 import {
   getInputTypeForProperty,
   getInputTypeFromValueType,
 } from "./input-type-utils";
 
+import { useUndoableState } from "@/hooks/useUndoableState";
 import { getOrkgPropertyLink, getOrkgClassLink } from "@/lib/orkg-links";
 
 type PropertyValue = string | number | boolean | string[];
@@ -78,6 +107,44 @@ function flattenForJson(v: FormValue, prop: SubtemplateProperty): unknown {
   return v;
 }
 
+export interface SelectOption {
+  value: string;
+  label: string;
+}
+
+export interface ScaleConfig {
+  min: number;
+  max: number;
+  minLabel?: string;
+  maxLabel?: string;
+}
+
+type OrderedBlock =
+  | { kind: "property"; id: string }
+  | { kind: "custom"; id: string };
+
+const CUSTOM_PREFIX = "__custom_";
+
+interface StructureState {
+  orderedBlocks: OrderedBlock[];
+  customBlocks: Record<string, CustomBlock>;
+  fieldOverrides: FieldOverrides;
+  /** Custom block ids per property path (inside template's nested accordion) */
+  nestedCustomBlocks: Record<string, string[]>;
+}
+
+/** User overrides for field label, description, input type, and options (keyed by property path) */
+export type FieldOverrides = Record<
+  string,
+  {
+    label?: string;
+    description?: string;
+    inputType?: InputType;
+    selectOptions?: SelectOption[];
+    scaleConfig?: ScaleConfig;
+  }
+>;
+
 interface QuestionnaireFormProps {
   templateId: string;
   label: string;
@@ -94,7 +161,301 @@ export function QuestionnaireForm({
   const [values, setValues] = useState<Record<string, FormValue>>(() =>
     buildInitialValues(mapping),
   );
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [editMode, setEditMode] = useState(true);
 
+  const [structure, setStructure, { undo, redo, canUndo, canRedo }] =
+    useUndoableState<StructureState>({
+      orderedBlocks: (Object.keys(mapping) as string[]).map((id) => ({
+        kind: "property" as const,
+        id,
+      })),
+      customBlocks: {},
+      fieldOverrides: {},
+      nestedCustomBlocks: {},
+    });
+
+  const { orderedBlocks, customBlocks, fieldOverrides, nestedCustomBlocks } =
+    structure;
+
+  const addBlock = useCallback(
+    (
+      type: "text" | "section" | "customField" | "html",
+      afterIndex: number,
+      parentSectionId?: string,
+    ) => {
+      const id = `custom-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+      const newBlock: OrderedBlock = { kind: "custom", id };
+      let blockData: CustomBlock;
+
+      if (type === "text") {
+        blockData = { type: "text", id, body: "" };
+      } else if (type === "section") {
+        blockData = { type: "section", id, title: "New section", childIds: [] };
+      } else if (type === "html") {
+        blockData = { type: "html", id, html: "<p>Your content here...</p>" };
+      } else {
+        blockData = {
+          type: "customField",
+          id,
+          label: "New field",
+          inputType: "text",
+        };
+      }
+
+      setStructure((prev) => {
+        const nextCustom = { ...prev.customBlocks, [id]: blockData };
+
+        if (parentSectionId !== undefined) {
+          const section = nextCustom[parentSectionId];
+
+          if (section?.type === "section") {
+            const childIds = [...(section.childIds ?? []), id];
+            const updatedSection: typeof section = { ...section, childIds };
+
+            return {
+              ...prev,
+              customBlocks: {
+                ...nextCustom,
+                [parentSectionId]: updatedSection,
+              },
+            };
+          }
+        }
+
+        const nextOrdered = [...prev.orderedBlocks];
+
+        nextOrdered.splice(afterIndex + 1, 0, newBlock);
+
+        return {
+          ...prev,
+          orderedBlocks: nextOrdered,
+          customBlocks: nextCustom,
+        };
+      });
+
+      if (type === "customField") {
+        setValues((prev) => ({ ...prev, [CUSTOM_PREFIX + id]: "" }));
+      }
+    },
+    [setStructure],
+  );
+
+  const moveBlock = useCallback(
+    (index: number, direction: "up" | "down") => {
+      const newIndex = direction === "up" ? index - 1 : index + 1;
+
+      if (newIndex < 0 || newIndex >= orderedBlocks.length) return;
+
+      setStructure((prev) => {
+        const next = [...prev.orderedBlocks];
+        const [removed] = next.splice(index, 1);
+
+        next.splice(newIndex, 0, removed);
+
+        return { ...prev, orderedBlocks: next };
+      });
+    },
+    [orderedBlocks.length, setStructure],
+  );
+
+  const removeBlock = useCallback(
+    (block: OrderedBlock) => {
+      if (block.kind === "custom") {
+        setStructure((prev) => {
+          const nextCustom = { ...prev.customBlocks };
+
+          delete nextCustom[block.id];
+
+          return {
+            ...prev,
+            orderedBlocks: prev.orderedBlocks.filter(
+              (b) => !(b.kind === "custom" && b.id === block.id),
+            ),
+            customBlocks: nextCustom,
+          };
+        });
+        setValues((prev) => {
+          const next = { ...prev };
+
+          delete next[CUSTOM_PREFIX + block.id];
+
+          return next;
+        });
+      } else {
+        setStructure((prev) => ({
+          ...prev,
+          orderedBlocks: prev.orderedBlocks.filter(
+            (b) => !(b.kind === "property" && b.id === block.id),
+          ),
+        }));
+      }
+    },
+    [setStructure],
+  );
+
+  const removeCustomBlock = useCallback(
+    (id: string) => {
+      removeBlock({ kind: "custom", id });
+    },
+    [removeBlock],
+  );
+
+  const updateCustomBlock = useCallback(
+    (id: string, data: CustomBlock) => {
+      setStructure((prev) => ({
+        ...prev,
+        customBlocks: { ...prev.customBlocks, [id]: data },
+      }));
+    },
+    [setStructure],
+  );
+
+  const addChildToSection = useCallback(
+    (sectionId: string, type: "text" | "section" | "customField" | "html") => {
+      addBlock(type, -1, sectionId);
+    },
+    [addBlock],
+  );
+
+  const sensors = useBlockDndSensors();
+
+  const handleDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      const { active, over } = event;
+
+      if (over == null || active.id === over.id) return;
+
+      const oldIndex = orderedBlocks.findIndex(
+        (b) => getBlockSortId(b) === active.id,
+      );
+      const newIndex = orderedBlocks.findIndex(
+        (b) => getBlockSortId(b) === over.id,
+      );
+
+      if (oldIndex === -1 || newIndex === -1) return;
+
+      setStructure((prev) => ({
+        ...prev,
+        orderedBlocks: arrayMove(prev.orderedBlocks, oldIndex, newIndex),
+      }));
+    },
+    [orderedBlocks, setStructure],
+  );
+
+  const addNestedBlock = useCallback(
+    (
+      propertyPath: string,
+      type: "text" | "section" | "customField" | "html",
+    ) => {
+      const id = `custom-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+      let blockData: CustomBlock;
+
+      if (type === "text") {
+        blockData = { type: "text", id, body: "" };
+      } else if (type === "section") {
+        blockData = { type: "section", id, title: "New section", childIds: [] };
+      } else if (type === "html") {
+        blockData = { type: "html", id, html: "<p>Content...</p>" };
+      } else {
+        blockData = {
+          type: "customField",
+          id,
+          label: "New field",
+          inputType: "text",
+        };
+      }
+
+      setStructure((prev) => ({
+        ...prev,
+        customBlocks: { ...prev.customBlocks, [id]: blockData },
+        nestedCustomBlocks: {
+          ...prev.nestedCustomBlocks,
+          [propertyPath]: [
+            ...(prev.nestedCustomBlocks[propertyPath] ?? []),
+            id,
+          ],
+        },
+      }));
+
+      if (type === "customField") {
+        setValues((prev) => ({ ...prev, [CUSTOM_PREFIX + id]: "" }));
+      }
+    },
+    [setStructure],
+  );
+
+  const removeNestedBlock = useCallback(
+    (propertyPath: string, childId: string) => {
+      setStructure((prev) => {
+        const nextCustom = { ...prev.customBlocks };
+
+        delete nextCustom[childId];
+
+        return {
+          ...prev,
+          customBlocks: nextCustom,
+          nestedCustomBlocks: {
+            ...prev.nestedCustomBlocks,
+            [propertyPath]: (
+              prev.nestedCustomBlocks[propertyPath] ?? []
+            ).filter((cid) => cid !== childId),
+          },
+        };
+      });
+      setValues((prev) => {
+        const next = { ...prev };
+
+        delete next[CUSTOM_PREFIX + childId];
+
+        return next;
+      });
+    },
+    [setStructure],
+  );
+
+  const reorderSectionChildren = useCallback(
+    (sectionId: string, newChildIds: string[]) => {
+      setStructure((prev) => {
+        const section = prev.customBlocks[sectionId];
+
+        if (section?.type !== "section") return prev;
+
+        const nextCustom = { ...prev.customBlocks };
+
+        nextCustom[sectionId] = { ...section, childIds: newChildIds };
+
+        return { ...prev, customBlocks: nextCustom };
+      });
+    },
+    [setStructure],
+  );
+
+  const removeChildFromSection = useCallback(
+    (sectionId: string, childId: string) => {
+      setStructure((prev) => {
+        const section = prev.customBlocks[sectionId];
+
+        if (section?.type !== "section") return prev;
+
+        const childIds = (section.childIds ?? []).filter((c) => c !== childId);
+        const nextCustom = { ...prev.customBlocks };
+
+        delete nextCustom[childId];
+        nextCustom[sectionId] = { ...section, childIds };
+
+        return { ...prev, customBlocks: nextCustom };
+      });
+      setValues((prev) => {
+        const next = { ...prev };
+
+        delete next[CUSTOM_PREFIX + childId];
+
+        return next;
+      });
+    },
+    [setStructure],
+  );
   const getValue = useCallback(
     (propertyId: string, hasSub: boolean): FormValue => {
       const v = values[propertyId];
@@ -110,12 +471,75 @@ export function QuestionnaireForm({
     setValues((prev) => ({ ...prev, [propertyId]: value }));
   }, []);
 
+  const onFieldOverride = useCallback(
+    (propertyPath: string, overrides: Partial<FieldOverrides[string]>) => {
+      setStructure((prev) => {
+        const current = prev.fieldOverrides[propertyPath] ?? {};
+        const merged = { ...current, ...overrides };
+
+        if (
+          merged.label === undefined &&
+          merged.description === undefined &&
+          merged.inputType === undefined &&
+          merged.selectOptions === undefined &&
+          merged.scaleConfig === undefined
+        ) {
+          const next = { ...prev.fieldOverrides };
+
+          delete next[propertyPath];
+
+          return { ...prev, fieldOverrides: next };
+        }
+
+        return {
+          ...prev,
+          fieldOverrides: {
+            ...prev.fieldOverrides,
+            [propertyPath]: merged,
+          },
+        };
+      });
+    },
+    [setStructure],
+  );
+
+  const getEffectiveProperty = useCallback(
+    (path: string, prop: SubtemplateProperty): SubtemplateProperty => {
+      const o = fieldOverrides[path];
+
+      if (!o) return prop;
+
+      return {
+        ...prop,
+        label: o.label ?? prop.label,
+        description: o.description ?? prop.description,
+      };
+    },
+    [fieldOverrides],
+  );
+
+  const getInputTypeForPath = useCallback(
+    (path: string, prop: SubtemplateProperty): InputType => {
+      const o = fieldOverrides[path];
+
+      if (o?.inputType) return o.inputType;
+
+      const enriched = prop as { valueType?: string };
+
+      return enriched.valueType !== undefined
+        ? getInputTypeFromValueType(enriched.valueType as never)
+        : getInputTypeForProperty(path.split(".").pop() ?? path);
+    },
+    [fieldOverrides],
+  );
+
   const handleExportJson = useCallback(() => {
     const exportData: Record<string, unknown> = {
       templateId,
       templateLabel: label,
       exportedAt: new Date().toISOString(),
       answers: {},
+      customAnswers: {},
     };
 
     for (const [propId, prop] of Object.entries(mapping)) {
@@ -124,6 +548,19 @@ export function QuestionnaireForm({
 
       if (flattened !== undefined) {
         (exportData.answers as Record<string, unknown>)[propId] = flattened;
+      }
+    }
+
+    for (const [key, v] of Object.entries(values)) {
+      if (
+        key.startsWith(CUSTOM_PREFIX) &&
+        v !== undefined &&
+        v !== "" &&
+        v !== null
+      ) {
+        const customId = key.slice(CUSTOM_PREFIX.length);
+
+        (exportData.customAnswers as Record<string, unknown>)[customId] = v;
       }
     }
     const blob = new Blob([JSON.stringify(exportData, null, 2)], {
@@ -274,13 +711,8 @@ export function QuestionnaireForm({
       const form = pdfDoc.getForm();
       let fc = 0;
 
-      const getType = (pid: string, prop: SubtemplateProperty): InputType => {
-        const e = prop as { valueType?: string };
-
-        return e.valueType !== undefined
-          ? getInputTypeFromValueType(e.valueType as never)
-          : getInputTypeForProperty(pid);
-      };
+      const getType = (path: string, prop: SubtemplateProperty): InputType =>
+        getInputTypeForPath(path, prop);
 
       const fetchOptions = async (
         pid: string,
@@ -312,12 +744,50 @@ export function QuestionnaireForm({
       };
 
       // ── Draw a form field ──────────────────────────────────────
+      const getOptionsForField = async (
+        path: string,
+        type: InputType,
+        pid: string,
+        prop: SubtemplateProperty,
+      ): Promise<string[]> => {
+        if (type === "resource") {
+          return fetchOptions(pid, prop.class_id);
+        }
+        if (type === "select") {
+          const o = fieldOverrides[path];
+
+          if (o?.selectOptions && o.selectOptions.length > 0) {
+            return o.selectOptions.map((opt) =>
+              (opt.label || opt.value).replace(/[^\x20-\x7E\xA0-\xFF]/g, "?"),
+            );
+          }
+
+          return ["Option 1", "Option 2", "Option 3", "Other"];
+        }
+        if (type === "scale") {
+          const sc = fieldOverrides[path]?.scaleConfig ?? { min: 1, max: 5 };
+          const { min, max, minLabel, maxLabel } = sc;
+          const labels: string[] = [];
+
+          for (let i = min; i <= max; i++) {
+            if (i === min && minLabel) labels.push(minLabel);
+            else if (i === max && maxLabel) labels.push(maxLabel);
+            else labels.push(String(i));
+          }
+
+          return labels;
+        }
+
+        return [];
+      };
+
       const drawField = async (
         type: InputType,
         x: number,
         w: number,
         pid: string,
         prop: SubtemplateProperty,
+        path: string,
       ) => {
         const name = `f_${fc++}`;
 
@@ -334,12 +804,13 @@ export function QuestionnaireForm({
             borderWidth: 1,
           });
           y += 20;
-        } else if (type === "resource" || type === "select") {
+        } else if (
+          type === "resource" ||
+          type === "select" ||
+          type === "scale"
+        ) {
           need(26);
-          const opts =
-            type === "resource"
-              ? await fetchOptions(pid, prop.class_id)
-              : ["Option 1", "Option 2", "Option 3", "Other"];
+          const opts = await getOptionsForField(path, type, pid, prop);
 
           if (opts.length > 0) {
             const dd = form.createDropdown(name);
@@ -439,11 +910,12 @@ export function QuestionnaireForm({
       //  PROPERTIES
       // ══════════════════════════════════════════════════════════════
       const renderProperty = async (
-        pid: string,
+        path: string,
         prop: SubtemplateProperty,
         depth: number,
       ) => {
-        const type = getType(pid, prop);
+        const effectiveProp = getEffectiveProperty(path, prop);
+        const type = getType(path, prop);
         const hasSubs =
           prop.subtemplate_properties &&
           Object.keys(prop.subtemplate_properties).length > 0;
@@ -454,9 +926,9 @@ export function QuestionnaireForm({
         if (depth === 0) {
           // ── Top-level card ─────────────────────────────────────
           // Pre-compute content height for the card background
-          const lblLines = wrap(prop.label, fw - 48, fontBold, 11);
-          const descLines = prop.description
-            ? wrap(prop.description, fw - 20, fontItalic, 8)
+          const lblLines = wrap(effectiveProp.label, fw - 48, fontBold, 11);
+          const descLines = effectiveProp.description
+            ? wrap(effectiveProp.description, fw - 20, fontItalic, 8)
             : [];
           const headerH =
             10 +
@@ -495,7 +967,11 @@ export function QuestionnaireForm({
               // Property ID link after first label line
               const lblW = fontBold.widthOfTextAtSize(lblLines[0], 11);
 
-              drawPropertyLink(pid, lx + lblW + 8, prop.class_id);
+              drawPropertyLink(
+                path.split(".").pop() ?? path,
+                lx + lblW + 8,
+                effectiveProp.class_id,
+              );
             }
             y += 14;
           }
@@ -511,23 +987,30 @@ export function QuestionnaireForm({
           y += 4;
 
           // Form field
-          await drawField(type, x0 + 10, fw - 16, pid, prop);
+          await drawField(
+            type,
+            x0 + 10,
+            fw - 16,
+            path.split(".").pop() ?? path,
+            effectiveProp,
+            path,
+          );
 
           // Sub-properties
           if (hasSubs) {
             for (const [sid, sp] of Object.entries(
               prop.subtemplate_properties!,
             )) {
-              await renderProperty(sid, sp, depth + 1);
+              await renderProperty(`${path}.${sid}`, sp, depth + 1);
             }
           }
 
           y += 8; // Card bottom spacing
         } else {
           // ── Nested property ────────────────────────────────────
-          const lblLines = wrap(prop.label, fw - 20, fontBold, 9.5);
-          const descLines = prop.description
-            ? wrap(prop.description, fw - 20, fontItalic, 7.5)
+          const lblLines = wrap(effectiveProp.label, fw - 20, fontBold, 9.5);
+          const descLines = effectiveProp.description
+            ? wrap(effectiveProp.description, fw - 20, fontItalic, 7.5)
             : [];
           const blockH =
             6 +
@@ -548,14 +1031,18 @@ export function QuestionnaireForm({
             if (i === 0) {
               const lblW = fontBold.widthOfTextAtSize(lblLines[0], 9.5);
 
-              drawPropertyLink(pid, x0 + 10 + lblW + 6, prop.class_id);
+              drawPropertyLink(
+                path.split(".").pop() ?? path,
+                x0 + 10 + lblW + 6,
+                effectiveProp.class_id,
+              );
             }
             y += 13;
           }
 
           // Cardinality
-          if (prop.cardinality) {
-            drawText(prop.cardinality, x0 + 10, 7, fontItalic, subtle);
+          if (effectiveProp.cardinality) {
+            drawText(effectiveProp.cardinality, x0 + 10, 7, fontItalic, subtle);
             y += 9;
           }
 
@@ -569,14 +1056,21 @@ export function QuestionnaireForm({
           }
 
           // Form field
-          await drawField(type, x0 + 10, fw - 16, pid, prop);
+          await drawField(
+            type,
+            x0 + 10,
+            fw - 16,
+            path.split(".").pop() ?? path,
+            effectiveProp,
+            path,
+          );
 
           // Sub-properties
           if (hasSubs) {
             for (const [sid, sp] of Object.entries(
               prop.subtemplate_properties!,
             )) {
-              await renderProperty(sid, sp, depth + 1);
+              await renderProperty(`${path}.${sid}`, sp, depth + 1);
             }
           }
 
@@ -595,8 +1089,220 @@ export function QuestionnaireForm({
         }
       };
 
-      for (const [pid, prop] of Object.entries(mapping)) {
-        await renderProperty(pid, prop, 0);
+      const renderCustomBlock = async (block: CustomBlock) => {
+        const x0 = M;
+        const fw = CW;
+
+        if (block.type === "text") {
+          if (block.heading) {
+            const lines = wrap(block.heading, fw - 20, fontBold, 11);
+
+            for (const ln of lines) {
+              need(14);
+              drawText(ln, x0 + 10, 11, fontBold, primary);
+              y += 14;
+            }
+            y += 2;
+          }
+          if (block.body) {
+            const lines = wrap(block.body, fw - 20, fontItalic, 9);
+
+            for (const ln of lines) {
+              need(11);
+              drawText(ln, x0 + 10, 9, fontItalic, muted);
+              y += 11;
+            }
+          }
+          y += 10;
+        } else if (block.type === "section") {
+          need(20);
+          page.drawLine({
+            start: { x: x0, y: py(y) },
+            end: { x: x0 + fw, y: py(y) },
+            thickness: 0.75,
+            color: divider,
+          });
+          y += 8;
+          const titleLines = wrap(
+            block.title || "Section",
+            fw - 20,
+            fontBold,
+            11,
+          );
+
+          for (const ln of titleLines) {
+            need(14);
+            drawText(ln, x0 + 10, 11, fontBold, primary);
+            y += 14;
+          }
+          page.drawLine({
+            start: { x: x0, y: py(y) },
+            end: { x: x0 + fw, y: py(y) },
+            thickness: 0.5,
+            color: divider,
+          });
+          y += 12;
+          const sectionChildIds = block.childIds ?? [];
+
+          for (const cid of sectionChildIds) {
+            const child = customBlocks[cid];
+
+            if (child) await renderCustomBlock(child);
+          }
+        } else if (block.type === "customField") {
+          need(40);
+          const lblLines = wrap(block.label, fw - 48, fontBold, 11);
+          const descLines = block.description
+            ? wrap(block.description, fw - 20, fontItalic, 8)
+            : [];
+          const headerH =
+            10 +
+            lblLines.length * 14 +
+            (descLines.length > 0 ? descLines.length * 11 + 4 : 0) +
+            8;
+
+          need(headerH + 30);
+          page.drawRectangle({
+            x: x0,
+            y: py(y + headerH),
+            width: fw,
+            height: headerH,
+            color: primaryBg,
+            borderWidth: 0,
+          });
+          page.drawRectangle({
+            x: x0,
+            y: py(y + headerH),
+            width: 3,
+            height: headerH,
+            color: primary,
+          });
+          y += 10;
+          for (const ln of lblLines) {
+            drawText(ln, x0 + 10, 11, fontBold, primary);
+            y += 14;
+          }
+          if (descLines.length > 0) {
+            y += 2;
+            for (const dl of descLines) {
+              drawText(dl, x0 + 10, 8, fontItalic, muted);
+              y += 11;
+            }
+          }
+          y += 4;
+          const opts =
+            block.type === "customField" &&
+            block.inputType === "select" &&
+            block.selectOptions
+              ? block.selectOptions.map((o) =>
+                  (o.label || o.value).replace(/[^\x20-\x7E\xA0-\xFF]/g, "?"),
+                )
+              : block.type === "customField" &&
+                  block.inputType === "scale" &&
+                  block.scaleConfig
+                ? (() => {
+                    const sc = block.scaleConfig;
+                    const labels: string[] = [];
+
+                    for (let i = sc.min; i <= sc.max; i++) {
+                      if (i === sc.min && sc.minLabel) labels.push(sc.minLabel);
+                      else if (i === sc.max && sc.maxLabel)
+                        labels.push(sc.maxLabel);
+                      else labels.push(String(i));
+                    }
+
+                    return labels;
+                  })()
+                : [];
+          const customDrawField = async (
+            type: InputType,
+            x: number,
+            w: number,
+          ) => {
+            const name = `f_${fc++}`;
+
+            if (type === "checkbox") {
+              need(18);
+              form.createCheckBox(name).addToPage(page, {
+                x,
+                y: py(y + 14),
+                width: 14,
+                height: 14,
+                borderColor: fieldBdr,
+                borderWidth: 1,
+              });
+              y += 20;
+            } else if (
+              (type === "select" || type === "scale") &&
+              opts.length > 0
+            ) {
+              need(26);
+              const dd = form.createDropdown(name);
+
+              dd.addOptions(opts);
+              dd.addToPage(page, {
+                x,
+                y: py(y + 22),
+                width: w,
+                height: 22,
+                borderColor: fieldBdr,
+                borderWidth: 1,
+                backgroundColor: fieldFill,
+              });
+              y += 28;
+            } else {
+              const h = type === "textarea" ? 44 : 22;
+
+              need(h + 4);
+              const tf = form.createTextField(name);
+
+              if (type === "textarea") tf.enableMultiline();
+              tf.addToPage(page, {
+                x,
+                y: py(y + h),
+                width: w,
+                height: h,
+                borderColor: fieldBdr,
+                borderWidth: 1,
+                backgroundColor: fieldFill,
+              });
+              y += h + 6;
+            }
+          };
+
+          await customDrawField(block.inputType, x0 + 10, fw - 16);
+          y += 8;
+        } else if (block.type === "html" && block.html) {
+          const stripped = block.html
+            .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
+            .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, "")
+            .replace(/<[^>]+>/g, " ")
+            .replace(/\s+/g, " ")
+            .trim();
+
+          if (stripped) {
+            const lines = wrap(stripped, fw - 20, fontItalic, 9);
+
+            for (const ln of lines) {
+              need(11);
+              drawText(ln, x0 + 10, 9, fontItalic, muted);
+              y += 11;
+            }
+          }
+          y += 10;
+        }
+      };
+
+      for (const block of orderedBlocks) {
+        if (block.kind === "property") {
+          const prop = mapping[block.id];
+
+          if (prop) await renderProperty(block.id, prop, 0);
+        } else {
+          const custom = customBlocks[block.id];
+
+          if (custom) await renderCustomBlock(custom);
+        }
       }
 
       form.updateFieldAppearances(font);
@@ -671,11 +1377,56 @@ export function QuestionnaireForm({
         `PDF export failed: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
-  }, [templateId, label, mapping]);
+  }, [
+    templateId,
+    label,
+    mapping,
+    fieldOverrides,
+    getEffectiveProperty,
+    getInputTypeForPath,
+    orderedBlocks,
+    customBlocks,
+  ]);
 
-  const entries = useMemo(
-    () => Object.entries(mapping) as [string, SubtemplateProperty][],
-    [mapping],
+  const AddBlockDropdown = useCallback(
+    ({ afterIndex }: { afterIndex: number }) => (
+      <Dropdown>
+        <DropdownTrigger>
+          <Button className="border-dashed mt-2" size="sm" variant="bordered">
+            + Add block
+          </Button>
+        </DropdownTrigger>
+        <DropdownMenu aria-label="Add block">
+          <DropdownSection title="Insert">
+            <DropdownItem
+              key="text"
+              onPress={() => addBlock("text", afterIndex)}
+            >
+              Text / instructions
+            </DropdownItem>
+            <DropdownItem
+              key="section"
+              onPress={() => addBlock("section", afterIndex)}
+            >
+              Section header
+            </DropdownItem>
+            <DropdownItem
+              key="field"
+              onPress={() => addBlock("customField", afterIndex)}
+            >
+              Custom field
+            </DropdownItem>
+            <DropdownItem
+              key="html"
+              onPress={() => addBlock("html", afterIndex)}
+            >
+              HTML block
+            </DropdownItem>
+          </DropdownSection>
+        </DropdownMenu>
+      </Dropdown>
+    ),
+    [addBlock],
   );
 
   return (
@@ -691,6 +1442,26 @@ export function QuestionnaireForm({
           >
             ← Back to templates
           </Button>
+          {canUndo && (
+            <Button
+              size="sm"
+              title="Undo last change"
+              variant="flat"
+              onPress={undo}
+            >
+              ↩ Undo
+            </Button>
+          )}
+          {canRedo && (
+            <Button
+              size="sm"
+              title="Redo"
+              variant="flat"
+              onPress={redo}
+            >
+              ↪ Redo
+            </Button>
+          )}
           <Button
             color="primary"
             size="sm"
@@ -701,34 +1472,210 @@ export function QuestionnaireForm({
           </Button>
           <Button
             color="primary"
+            isLoading={isExportingPdf}
             size="sm"
             variant="bordered"
-            onPress={() => void handleExportPdf()}
+            onPress={async () => {
+              setIsExportingPdf(true);
+              await new Promise((r) => setTimeout(r, 0)); // Yield to allow loading state to paint
+              try {
+                await handleExportPdf();
+              } finally {
+                setIsExportingPdf(false);
+              }
+            }}
           >
             Export fillable PDF
           </Button>
         </div>
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-primary md:text-3xl">
-            {label}
-          </h1>
-          <p className="mt-1 text-default-500">Template ID: {templateId}</p>
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight text-primary md:text-3xl">
+              {label}
+            </h1>
+            <p className="mt-1 text-default-500">Template ID: {templateId}</p>
+          </div>
+          <Switch isSelected={editMode} size="sm" onValueChange={setEditMode}>
+            Customize fields
+          </Switch>
         </div>
       </div>
 
       <div className="flex flex-col gap-6">
-        {entries.map(([propertyId, property]) => (
-          <TemplatePropertyRenderer
-            key={propertyId}
-            property={property}
-            propertyId={propertyId}
-            value={getValue(
-              propertyId,
-              !!property.subtemplate_properties?.length,
-            )}
-            onValueChange={(v) => setValue(propertyId, v)}
-          />
-        ))}
+        {editMode && (
+          <div className="flex justify-center py-2">
+            <AddBlockDropdown afterIndex={-1} />
+          </div>
+        )}
+        <DndContext
+          collisionDetection={closestCenter}
+          onDragEnd={handleDragEnd}
+          sensors={sensors}
+        >
+          <SortableContext
+            items={orderedBlocks.map(getBlockSortId)}
+            strategy={verticalListSortingStrategy}
+          >
+            {orderedBlocks.map((block, index) => {
+              const sortId = getBlockSortId(block);
+              const blockContent =
+                block.kind === "property" ? (
+                  <>
+                    <TemplatePropertyRenderer
+                  customBlocks={customBlocks}
+                  editMode={editMode}
+                  fieldOverrides={fieldOverrides}
+                  getInputTypeForPath={getInputTypeForPath}
+                  nestedCustomBlockIds={nestedCustomBlocks[block.id] ?? []}
+                  nestedCustomBlocksRecord={nestedCustomBlocks}
+                  onAddNestedBlock={addNestedBlock}
+                  onFieldOverride={onFieldOverride}
+                  onRemoveNestedBlock={removeNestedBlock}
+                  onUpdateCustomBlock={updateCustomBlock}
+                  onAddChildToSection={addChildToSection}
+                  onRemoveChildFromSection={removeChildFromSection}
+                  onReorderSectionChildren={reorderSectionChildren}
+                  onNestedCustomValueChange={(blockId, v) =>
+                    setValue(`__custom_${blockId}`, v)
+                  }
+                  property={mapping[block.id]!}
+                  propertyId={block.id}
+                  propertyPath={block.id}
+                  value={getValue(
+                    block.id,
+                    !!mapping[block.id]?.subtemplate_properties?.length,
+                  )}
+                  values={values}
+                  onValueChange={(v) => setValue(block.id, v)}
+                />
+                {editMode && (
+                  <div className="flex justify-center">
+                    <AddBlockDropdown afterIndex={index} />
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                {(() => {
+                  const custom = customBlocks[block.id];
+
+                  if (!custom) return null;
+                  if (custom.type === "text") {
+                    return (
+                      <TextBlock
+                        block={custom}
+                        editMode={editMode}
+                        onRemove={() => removeCustomBlock(block.id)}
+                        onUpdate={(b) => updateCustomBlock(block.id, b)}
+                      />
+                    );
+                  }
+                  if (custom.type === "html") {
+                    return (
+                      <HtmlBlock
+                        block={custom}
+                        editMode={editMode}
+                        onRemove={() => removeCustomBlock(block.id)}
+                        onUpdate={(b) => updateCustomBlock(block.id, b)}
+                      />
+                    );
+                  }
+                  if (custom.type === "section") {
+                    const sectionChildIds = custom.childIds ?? [];
+                    const sectionChildBlocks = sectionChildIds
+                      .map((cid) => customBlocks[cid])
+                      .filter(Boolean);
+
+                    return (
+                      <SectionBlock
+                        block={custom}
+                        childBlocks={sectionChildBlocks}
+                        editMode={editMode}
+                        getChildValue={(cid) =>
+                          (values[CUSTOM_PREFIX + cid] as
+                            | string
+                            | number
+                            | boolean
+                            | string[]
+                            | undefined) ?? ""
+                        }
+                        onAddChild={(sectionId, type) =>
+                          addChildToSection(sectionId, type)
+                        }
+                        onReorderChildren={reorderSectionChildren}
+                        onChildValueChange={(cid, v) =>
+                          setValue(CUSTOM_PREFIX + cid, v)
+                        }
+                        onRemove={() => removeCustomBlock(block.id)}
+                        getChildBlocks={(sectionId) => {
+                          const s = customBlocks[sectionId] as
+                            | { type: "section"; childIds?: string[] }
+                            | undefined;
+
+                          return (s?.childIds ?? [])
+                            .map((cid) => customBlocks[cid])
+                            .filter(Boolean) as CustomBlock[];
+                        }}
+                        onRemoveChild={(sectionId, cid) =>
+                          removeChildFromSection(sectionId, cid)
+                        }
+                        onUpdate={(b) => updateCustomBlock(block.id, b)}
+                        onUpdateChild={(cid, b) => updateCustomBlock(cid, b)}
+                      />
+                    );
+                  }
+
+                  return (
+                    <CustomFieldBlock
+                      block={custom}
+                      editMode={editMode}
+                      value={
+                        (values[CUSTOM_PREFIX + block.id] as
+                          | string
+                          | number
+                          | boolean
+                          | string[]
+                          | undefined) ?? ""
+                      }
+                      onChange={(v) => setValue(CUSTOM_PREFIX + block.id, v)}
+                      onRemove={() => removeCustomBlock(block.id)}
+                      onUpdate={(b) => updateCustomBlock(block.id, b)}
+                    />
+                  );
+                })()}
+                {editMode && (
+                  <div className="flex justify-center">
+                    <AddBlockDropdown afterIndex={index} />
+                  </div>
+                )}
+              </>
+            );
+
+              return (
+                <div key={sortId} className="group/block flex flex-col gap-2">
+                  {editMode ? (
+                    <SortableBlockWrapper id={sortId}>
+                      <div className="flex w-full items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">{blockContent}</div>
+                        <Button
+                          color="danger"
+                          size="sm"
+                          title="Remove"
+                          variant="flat"
+                          onPress={() => removeBlock(block)}
+                        >
+                          ✕ Remove
+                        </Button>
+                      </div>
+                    </SortableBlockWrapper>
+                  ) : (
+                    blockContent
+                  )}
+                </div>
+              );
+            })}
+          </SortableContext>
+        </DndContext>
       </div>
     </section>
   );

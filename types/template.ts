@@ -5,7 +5,8 @@ export type InputType =
   | "select"
   | "checkbox"
   | "date"
-  | "resource"; // ORKG resource autoselect
+  | "resource" // ORKG resource autoselect
+  | "scale"; // Likert-style rating (e.g. 1-5, Difficult→Easy)
 
 /**
  * Value type detected from SPARQL query against ORKG.
@@ -36,3 +37,48 @@ export interface EnrichedSubtemplateProperty extends SubtemplateProperty {
 
 export type TemplateMapping = Record<string, SubtemplateProperty>;
 export type EnrichedTemplateMapping = Record<string, EnrichedSubtemplateProperty>;
+
+/** Custom block types that can be inserted into the questionnaire */
+export type CustomBlockType = "text" | "section" | "customField" | "html";
+
+export interface TextBlockData {
+  type: "text";
+  id: string;
+  heading?: string;
+  body: string;
+}
+
+export interface SectionBlockData {
+  type: "section";
+  id: string;
+  title: string;
+  /** Child block ids (custom blocks rendered inside this section) */
+  childIds?: string[];
+}
+
+export interface CustomFieldBlockData {
+  type: "customField";
+  id: string;
+  label: string;
+  inputType: InputType;
+  description?: string;
+  selectOptions?: { value: string; label: string }[];
+  scaleConfig?: { min: number; max: number; minLabel?: string; maxLabel?: string };
+}
+
+export interface HtmlBlockData {
+  type: "html";
+  id: string;
+  html: string;
+}
+
+export type CustomBlock =
+  | TextBlockData
+  | SectionBlockData
+  | CustomFieldBlockData
+  | HtmlBlockData;
+
+/** Ordered item in the questionnaire: either a template property or a custom block */
+export type QuestionnaireBlockItem =
+  | { kind: "property"; id: string }
+  | { kind: "custom"; id: string };

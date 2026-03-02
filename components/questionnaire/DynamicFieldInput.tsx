@@ -1,11 +1,15 @@
 "use client";
 
+import type { InputType } from "@/types/template";
+import type { ScaleConfig, SelectOption } from "./QuestionnaireForm";
+
 import { Input, Textarea } from "@heroui/input";
 import { Select, SelectItem } from "@heroui/select";
 import { Checkbox } from "@heroui/checkbox";
+import { RadioGroup, Radio } from "@heroui/radio";
+
 import { ResourceAutoselect } from "./ResourceAutoselect";
 import { FieldLabel } from "./FieldLabel";
-import type { InputType } from "@/types/template";
 
 type FieldValue = string | number | boolean | string[];
 
@@ -22,11 +26,15 @@ interface DynamicFieldInputProps {
   classId?: string;
   /** Link to create new ORKG resource (e.g. https://orkg.org/resources/create?classes={class_id}) */
   createLink?: string;
+  /** Custom options for select/dropdown (PDF-style domain-specific options) */
+  selectOptions?: SelectOption[];
+  /** Config for scale/rating fields (Likert-style) */
+  scaleConfig?: ScaleConfig;
 }
 
 const fieldInputClass = "w-full data-[focus=true]:border-primary";
 
-const SELECT_OPTIONS = [
+const DEFAULT_SELECT_OPTIONS: SelectOption[] = [
   { value: "option1", label: "Option 1" },
   { value: "option2", label: "Option 2" },
   { value: "option3", label: "Option 3" },
@@ -46,6 +54,8 @@ export function DynamicFieldInput({
   cardinality,
   classId,
   createLink,
+  selectOptions = DEFAULT_SELECT_OPTIONS,
+  scaleConfig = { min: 1, max: 5 },
 }: DynamicFieldInputProps) {
   const id = `field-${propertyId}`;
   const multiselect = isOneToMany(cardinality);
@@ -54,39 +64,66 @@ export function DynamicFieldInput({
     case "text":
       return (
         <Input
+          className={fieldInputClass}
+          classNames={{
+            inputWrapper: "border-default-200 data-[focus=true]:border-primary",
+          }}
           id={id}
-          label={<FieldLabel label={label} propertyId={propertyId} classId={classId} />}
+          label={
+            <FieldLabel
+              classId={classId}
+              label={label}
+              propertyId={propertyId}
+            />
+          }
+          labelPlacement="outside"
           placeholder={placeholder ?? `Enter ${label.toLowerCase()}...`}
           value={typeof value === "string" ? value : ""}
           onValueChange={(v) => onChange(v)}
-          labelPlacement="outside"
-          classNames={{ inputWrapper: "border-default-200 data-[focus=true]:border-primary" }}
-          className={fieldInputClass}
         />
       );
 
     case "textarea":
       return (
         <Textarea
+          className={fieldInputClass}
+          classNames={{
+            inputWrapper: "border-default-200 data-[focus=true]:border-primary",
+          }}
           id={id}
-          label={<FieldLabel label={label} propertyId={propertyId} classId={classId} />}
+          label={
+            <FieldLabel
+              classId={classId}
+              label={label}
+              propertyId={propertyId}
+            />
+          }
+          labelPlacement="outside"
+          minRows={3}
           placeholder={placeholder ?? `Enter ${label.toLowerCase()}...`}
           value={typeof value === "string" ? value : ""}
           onValueChange={(v) => onChange(v)}
-          labelPlacement="outside"
-          minRows={3}
-          classNames={{ inputWrapper: "border-default-200 data-[focus=true]:border-primary" }}
-          className={fieldInputClass}
         />
       );
 
     case "number":
       return (
         <Input
+          className={fieldInputClass}
+          classNames={{
+            inputWrapper: "border-default-200 data-[focus=true]:border-primary",
+          }}
           id={id}
-          label={<FieldLabel label={label} propertyId={propertyId} classId={classId} />}
-          type="number"
+          label={
+            <FieldLabel
+              classId={classId}
+              label={label}
+              propertyId={propertyId}
+            />
+          }
+          labelPlacement="outside"
           placeholder={placeholder ?? `Enter number...`}
+          type="number"
           value={
             typeof value === "number"
               ? String(value)
@@ -95,32 +132,33 @@ export function DynamicFieldInput({
                 : String(value)
           }
           onValueChange={(v) =>
-            onChange(
-              v === ""
-                ? ""
-                : Number.isNaN(Number(v))
-                  ? v
-                  : Number(v)
-            )
+            onChange(v === "" ? "" : Number.isNaN(Number(v)) ? v : Number(v))
           }
-          labelPlacement="outside"
-          classNames={{ inputWrapper: "border-default-200 data-[focus=true]:border-primary" }}
-          className={fieldInputClass}
         />
       );
 
     case "select":
       return (
         <Select
+          className={fieldInputClass}
+          classNames={{
+            trigger: "border-default-200 data-[focus=true]:border-primary",
+          }}
           id={id}
-          label={<FieldLabel label={label} propertyId={propertyId} classId={classId} />}
+          label={
+            <FieldLabel
+              classId={classId}
+              label={label}
+              propertyId={propertyId}
+            />
+          }
+          labelPlacement="outside"
           placeholder={
             placeholder ??
             (multiselect
               ? `Select one or more ${label.toLowerCase()}...`
               : `Select ${label.toLowerCase()}...`)
           }
-          selectionMode={multiselect ? "multiple" : "single"}
           selectedKeys={
             multiselect
               ? new Set(Array.isArray(value) ? value : [])
@@ -128,75 +166,136 @@ export function DynamicFieldInput({
                 ? new Set([value])
                 : new Set()
           }
+          selectionMode={multiselect ? "multiple" : "single"}
           onSelectionChange={(keys) => {
             if (multiselect) {
               onChange(Array.from(keys) as string[]);
             } else {
               const selected = Array.from(keys)[0];
+
               onChange(selected ? String(selected) : "");
             }
           }}
-          labelPlacement="outside"
-          classNames={{ trigger: "border-default-200 data-[focus=true]:border-primary" }}
-          className={fieldInputClass}
         >
-          {SELECT_OPTIONS.map((opt) => (
+          {selectOptions.map((opt) => (
             <SelectItem key={opt.value}>{opt.label}</SelectItem>
           ))}
         </Select>
       );
 
+    case "scale": {
+      const { min, max, minLabel, maxLabel } = scaleConfig;
+      const steps = max - min + 1;
+      const labels = Array.from({ length: steps }, (_, i) => {
+        const v = min + i;
+
+        if (i === 0 && minLabel) return { value: String(v), label: minLabel };
+        if (i === steps - 1 && maxLabel)
+          return { value: String(v), label: maxLabel };
+
+        return { value: String(v), label: String(v) };
+      });
+      const currentVal =
+        typeof value === "number"
+          ? value
+          : typeof value === "string" && value
+            ? Number(value)
+            : undefined;
+
+      return (
+        <div className="flex flex-col gap-2">
+          <FieldLabel
+            classId={undefined}
+            label={label}
+            propertyId={propertyId}
+          />
+          <RadioGroup
+            classNames={{ wrapper: "flex-wrap gap-2" }}
+            orientation="horizontal"
+            value={currentVal != null ? String(currentVal) : undefined}
+            onValueChange={(v) => onChange(v ? Number(v) : "")}
+          >
+            {labels.map((opt) => (
+              <Radio
+                key={opt.value}
+                classNames={{ base: "m-0" }}
+                value={opt.value}
+              >
+                {opt.label}
+              </Radio>
+            ))}
+          </RadioGroup>
+        </div>
+      );
+    }
+
     case "checkbox":
       return (
         <Checkbox
+          classNames={{ base: "max-w-full", label: "text-primary/90" }}
           id={id}
           isSelected={value === true}
           onValueChange={(checked) => onChange(checked)}
-          classNames={{ base: "max-w-full", label: "text-primary/90" }}
         >
-          <FieldLabel label={label} propertyId={propertyId} classId={classId} />
+          <FieldLabel classId={classId} label={label} propertyId={propertyId} />
         </Checkbox>
       );
 
     case "date":
       return (
         <Input
+          className={fieldInputClass}
+          classNames={{
+            inputWrapper: "border-default-200 data-[focus=true]:border-primary",
+          }}
           id={id}
-          label={<FieldLabel label={label} propertyId={propertyId} classId={classId} />}
+          label={
+            <FieldLabel
+              classId={classId}
+              label={label}
+              propertyId={propertyId}
+            />
+          }
+          labelPlacement="outside"
           type="date"
           value={typeof value === "string" ? value : ""}
           onValueChange={(v) => onChange(v)}
-          labelPlacement="outside"
-          classNames={{ inputWrapper: "border-default-200 data-[focus=true]:border-primary" }}
-          className={fieldInputClass}
         />
       );
 
     case "resource":
       return (
         <ResourceAutoselect
-          propertyId={propertyId}
-          label={label}
-          placeholder={placeholder}
-          value={value}
-          onChange={onChange}
-          multiselect={multiselect}
           classId={classId}
           createLink={createLink}
+          label={label}
+          multiselect={multiselect}
+          placeholder={placeholder}
+          propertyId={propertyId}
+          value={value}
+          onChange={onChange}
         />
       );
 
     default:
       return (
         <Input
+          className={fieldInputClass}
+          classNames={{
+            inputWrapper: "border-default-200 data-[focus=true]:border-primary",
+          }}
           id={id}
-          label={<FieldLabel label={label} propertyId={propertyId} classId={classId} />}
+          label={
+            <FieldLabel
+              classId={classId}
+              label={label}
+              propertyId={propertyId}
+            />
+          }
+          labelPlacement="outside"
           placeholder={placeholder ?? `Enter ${label.toLowerCase()}...`}
           value={typeof value === "string" ? value : ""}
           onValueChange={(v) => onChange(v)}
-          labelPlacement="outside"
-          classNames={{ inputWrapper: "border-default-200 data-[focus=true]:border-primary" }}
-          className={fieldInputClass}
         />
       );
   }
