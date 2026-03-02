@@ -50,7 +50,7 @@ export function SortableBlockWrapper({
         <div
           {...attributes}
           {...listeners}
-          className="mt-1 cursor-grab active:cursor-grabbing touch-none rounded p-1 text-default-400 hover:bg-default-100 hover:text-default-600"
+          className="mt-0.5 cursor-grab active:cursor-grabbing touch-none rounded-lg p-2 text-default-500 transition-colors hover:bg-default-200 hover:text-default-700"
           title="Drag to reorder"
         >
           <svg

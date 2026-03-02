@@ -207,16 +207,16 @@ export function TemplatePropertyRenderer({
   const hasOverrides = Boolean(overrides?.label ?? overrides?.description ?? overrides?.inputType ?? overrides?.selectOptions ?? overrides?.scaleConfig);
   const fieldEditorUi = canEdit && editMode && (
     <Accordion
-      className="mt-2 w-full gap-0 px-0"
+      className="mt-3 w-full gap-0 px-0"
       variant="bordered"
-      itemClasses={{ base: "border-default-200 rounded-lg overflow-hidden" }}
+      itemClasses={{ base: "border-default-200 rounded-xl overflow-hidden shadow-sm" }}
     >
       <AccordionItem
         key="edit"
         aria-label="Customize field"
         classNames={{
-          trigger: "py-2 px-3 data-[hover=true]:bg-default-100/80 min-h-0",
-          content: "px-3 pb-3 pt-0",
+          trigger: "py-2.5 px-4 data-[hover=true]:bg-default-100/80 min-h-0 rounded-xl",
+          content: "px-4 pb-4 pt-1",
           title: "text-sm font-medium text-default-600",
         }}
         startContent={
@@ -417,8 +417,8 @@ export function TemplatePropertyRenderer({
 
   // Property with nested subtemplate_properties
   return (
-    <Card className="w-full border-primary/20 shadow-sm" shadow="sm">
-      <CardHeader className="flex flex-col items-start gap-1 border-b border-default-200/50 px-4 pt-4">
+    <Card className="w-full overflow-hidden rounded-xl border border-default-200 shadow-sm" shadow="sm">
+      <CardHeader className="flex flex-col items-start gap-1 border-b border-default-200/60 px-5 pt-5">
         <div className="w-full">
           <DynamicFieldInput
             cardinality={property.cardinality}
@@ -436,14 +436,14 @@ export function TemplatePropertyRenderer({
         </div>
         {fieldEditorUi}
       </CardHeader>
-      <CardBody className="px-4 pb-4 pt-0">
-        <div className="ml-4 mt-2 border-l-2 border-primary/30 pl-4">
+      <CardBody className="px-5 pb-5 pt-4">
+        <div className="ml-2 mt-1 rounded-lg border border-default-100 bg-default-50/30 px-5 py-4">
           {effectiveDescription && (
             <p className="mb-3 text-sm text-default-500">
               {effectiveDescription}
             </p>
           )}
-          <Accordion className="gap-0" variant="bordered">
+          <Accordion className="gap-2" variant="bordered" itemClasses={{ base: "rounded-xl border-default-200 overflow-hidden" }}>
             {[
               ...Object.entries(property.subtemplate_properties!).map(
                 ([subPropId, subProp]) => (
@@ -451,8 +451,9 @@ export function TemplatePropertyRenderer({
                   key={subPropId}
                   aria-label={(fieldOverrides[`${propertyPath}.${subPropId}`]?.label ?? subProp.label)}
                   classNames={{
-                    title: "text-primary font-medium",
-                    trigger: "data-[hover=true]:bg-primary/5",
+                    title: "text-default-800 font-medium",
+                    trigger: "py-3 px-4 data-[hover=true]:bg-primary/5 data-[open=true]:bg-default-50 rounded-xl min-h-0",
+                    content: "px-4 pb-4",
                   }}
                   subtitle={subProp.cardinality}
                   title={fieldOverrides[`${propertyPath}.${subPropId}`]?.label ?? subProp.label}
@@ -517,8 +518,9 @@ export function TemplatePropertyRenderer({
                     key={blockId}
                     aria-label={block.heading ?? "Text block"}
                     classNames={{
-                      title: "text-primary font-medium",
-                      trigger: "data-[hover=true]:bg-primary/5",
+                      title: "text-default-800 font-medium",
+                      trigger: "py-3 px-4 data-[hover=true]:bg-primary/5 data-[open=true]:bg-default-50 rounded-xl min-h-0",
+                      content: "px-4 pb-4",
                     }}
                     title={block.heading ?? "Text block"}
                   >
@@ -539,8 +541,9 @@ export function TemplatePropertyRenderer({
                     key={blockId}
                     aria-label={block.label}
                     classNames={{
-                      title: "text-primary font-medium",
-                      trigger: "data-[hover=true]:bg-primary/5",
+                      title: "text-default-800 font-medium",
+                      trigger: "py-3 px-4 data-[hover=true]:bg-primary/5 data-[open=true]:bg-default-50 rounded-xl min-h-0",
+                      content: "px-4 pb-4",
                     }}
                     title={block.label}
                   >
@@ -565,8 +568,9 @@ export function TemplatePropertyRenderer({
                     key={blockId}
                     aria-label="HTML block"
                     classNames={{
-                      title: "text-primary font-medium",
-                      trigger: "data-[hover=true]:bg-primary/5",
+                      title: "text-default-800 font-medium",
+                      trigger: "py-3 px-4 data-[hover=true]:bg-primary/5 data-[open=true]:bg-default-50 rounded-xl min-h-0",
+                      content: "px-4 pb-4",
                     }}
                     title="HTML block"
                   >
@@ -587,8 +591,9 @@ export function TemplatePropertyRenderer({
                     key={blockId}
                     aria-label={block.title}
                     classNames={{
-                      title: "text-primary font-medium",
-                      trigger: "data-[hover=true]:bg-primary/5",
+                      title: "text-default-800 font-medium",
+                      trigger: "py-3 px-4 data-[hover=true]:bg-primary/5 data-[open=true]:bg-default-50 rounded-xl min-h-0",
+                      content: "px-4 pb-4",
                     }}
                     title={block.title}
                   >

@@ -3,6 +3,7 @@
 import type { TemplateListItem } from "@/lib/orkg-templates";
 
 import { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Card, CardBody } from "@heroui/card";
 import { Input } from "@heroui/input";
@@ -231,9 +232,12 @@ export function TemplateSelector() {
                       {t.description}
                     </p>
                   )}
-                  <div className="flex gap-2 mt-2">
+                  <div className="mt-2 flex gap-2">
                     <Button
+                      as={Link}
                       color="primary"
+                      href={`/questionnaire/${t.id}`}
+                      isDisabled={loadingQId !== null && loadingQId !== t.id}
                       isLoading={loadingQId === t.id}
                       size="sm"
                       variant="flat"

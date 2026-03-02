@@ -33,6 +33,7 @@ interface DynamicFieldInputProps {
 }
 
 const fieldInputClass = "w-full data-[focus=true]:border-primary";
+const inputWrapperClass = "rounded-lg border-default-200 data-[focus=true]:border-primary transition-colors";
 
 const DEFAULT_SELECT_OPTIONS: SelectOption[] = [
   { value: "option1", label: "Option 1" },
@@ -66,7 +67,7 @@ export function DynamicFieldInput({
         <Input
           className={fieldInputClass}
           classNames={{
-            inputWrapper: "border-default-200 data-[focus=true]:border-primary",
+            inputWrapper: inputWrapperClass,
           }}
           id={id}
           label={
@@ -88,7 +89,7 @@ export function DynamicFieldInput({
         <Textarea
           className={fieldInputClass}
           classNames={{
-            inputWrapper: "border-default-200 data-[focus=true]:border-primary",
+            inputWrapper: inputWrapperClass,
           }}
           id={id}
           label={
@@ -111,7 +112,7 @@ export function DynamicFieldInput({
         <Input
           className={fieldInputClass}
           classNames={{
-            inputWrapper: "border-default-200 data-[focus=true]:border-primary",
+            inputWrapper: inputWrapperClass,
           }}
           id={id}
           label={
@@ -142,7 +143,7 @@ export function DynamicFieldInput({
         <Select
           className={fieldInputClass}
           classNames={{
-            trigger: "border-default-200 data-[focus=true]:border-primary",
+            trigger: inputWrapperClass,
           }}
           id={id}
           label={
@@ -203,7 +204,7 @@ export function DynamicFieldInput({
             : undefined;
 
       return (
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-3">
           <FieldLabel
             classId={undefined}
             label={label}
@@ -246,7 +247,7 @@ export function DynamicFieldInput({
         <Input
           className={fieldInputClass}
           classNames={{
-            inputWrapper: "border-default-200 data-[focus=true]:border-primary",
+            inputWrapper: inputWrapperClass,
           }}
           id={id}
           label={
@@ -282,7 +283,7 @@ export function DynamicFieldInput({
         <Input
           className={fieldInputClass}
           classNames={{
-            inputWrapper: "border-default-200 data-[focus=true]:border-primary",
+            inputWrapper: inputWrapperClass,
           }}
           id={id}
           label={

@@ -1392,7 +1392,11 @@ export function QuestionnaireForm({
     ({ afterIndex }: { afterIndex: number }) => (
       <Dropdown>
         <DropdownTrigger>
-          <Button className="border-dashed mt-2" size="sm" variant="bordered">
+          <Button
+            className="border-dashed border-2 border-default-400 font-medium text-default-600 hover:border-primary hover:bg-primary/5 hover:text-primary"
+            size="md"
+            variant="bordered"
+          >
             + Add block
           </Button>
         </DropdownTrigger>
@@ -1430,80 +1434,107 @@ export function QuestionnaireForm({
   );
 
   return (
-    <section className="flex flex-col gap-8 py-8">
+    <section className="questionnaire-form flex max-w-4xl flex-col gap-10 py-10">
+      {/* Header card */}
+      <div className="rounded-2xl border border-default-200 bg-default-50/50 p-6 shadow-sm">
+        <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+              {label}
+            </h1>
+            <p className="mt-1.5 text-sm text-default-500">
+              Template: <code className="rounded bg-default-200 px-1.5 py-0.5 text-xs">{templateId}</code>
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium text-default-600">
+              {editMode ? "Edit mode" : "Fill mode"}
+            </span>
+            <Switch
+              isSelected={editMode}
+              size="md"
+              onValueChange={setEditMode}
+              classNames={{ wrapper: "group-data-[selected=true]:bg-primary" }}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Toolbar */}
       <div className="flex flex-col gap-4">
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-3">
           <Button
             as={Link}
             color="primary"
             href={backHref}
             size="sm"
             variant="flat"
+            className="font-medium"
           >
             ← Back to templates
           </Button>
-          {canUndo && (
-            <Button
-              size="sm"
-              title="Undo last change"
-              variant="flat"
-              onPress={undo}
-            >
-              ↩ Undo
-            </Button>
+          <div className="h-4 w-px bg-default-300" />
+          {(canUndo || canRedo) && (
+            <div className="flex items-center gap-1">
+              {canUndo && (
+                <Button
+                  size="sm"
+                  title="Undo last change"
+                  variant="flat"
+                  className="min-w-0"
+                  onPress={undo}
+                >
+                  Undo
+                </Button>
+              )}
+              {canRedo && (
+                <Button
+                  size="sm"
+                  title="Redo"
+                  variant="flat"
+                  className="min-w-0"
+                  onPress={redo}
+                >
+                  Redo
+                </Button>
+              )}
+            </div>
           )}
-          {canRedo && (
+          <div className="h-4 w-px bg-default-300" />
+          <div className="flex items-center gap-2">
             <Button
+              color="primary"
               size="sm"
-              title="Redo"
-              variant="flat"
-              onPress={redo}
+              variant="bordered"
+              onPress={handleExportJson}
             >
-              ↪ Redo
+              Export JSON
             </Button>
-          )}
-          <Button
-            color="primary"
-            size="sm"
-            variant="bordered"
-            onPress={handleExportJson}
-          >
-            Export answers (JSON)
-          </Button>
-          <Button
-            color="primary"
-            isLoading={isExportingPdf}
-            size="sm"
-            variant="bordered"
-            onPress={async () => {
-              setIsExportingPdf(true);
-              await new Promise((r) => setTimeout(r, 0)); // Yield to allow loading state to paint
-              try {
-                await handleExportPdf();
-              } finally {
-                setIsExportingPdf(false);
-              }
-            }}
-          >
-            Export fillable PDF
-          </Button>
-        </div>
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight text-primary md:text-3xl">
-              {label}
-            </h1>
-            <p className="mt-1 text-default-500">Template ID: {templateId}</p>
+            <Button
+              color="primary"
+              isLoading={isExportingPdf}
+              size="sm"
+              variant="solid"
+              onPress={async () => {
+                setIsExportingPdf(true);
+                await new Promise((r) => setTimeout(r, 0));
+                try {
+                  await handleExportPdf();
+                } finally {
+                  setIsExportingPdf(false);
+                }
+              }}
+            >
+              Export PDF
+            </Button>
           </div>
-          <Switch isSelected={editMode} size="sm" onValueChange={setEditMode}>
-            Customize fields
-          </Switch>
         </div>
       </div>
 
-      <div className="flex flex-col gap-6">
+      {/* Blocks */}
+      <div className="flex flex-col gap-8">
         {editMode && (
-          <div className="flex justify-center py-2">
+          <div className="flex justify-center rounded-xl border-2 border-dashed border-default-300 bg-default-50/50 py-6">
             <AddBlockDropdown afterIndex={-1} />
           </div>
         )}
@@ -1652,19 +1683,23 @@ export function QuestionnaireForm({
             );
 
               return (
-                <div key={sortId} className="group/block flex flex-col gap-2">
+                <div
+                  key={sortId}
+                  className="group/block rounded-xl border border-default-100 bg-background p-5 transition-colors hover:border-default-200"
+                >
                   {editMode ? (
                     <SortableBlockWrapper id={sortId}>
-                      <div className="flex w-full items-start justify-between gap-2">
+                      <div className="flex w-full items-start justify-between gap-4">
                         <div className="min-w-0 flex-1">{blockContent}</div>
                         <Button
                           color="danger"
                           size="sm"
-                          title="Remove"
-                          variant="flat"
+                          title="Remove this block"
+                          variant="light"
+                          className="opacity-70 hover:opacity-100"
                           onPress={() => removeBlock(block)}
                         >
-                          ✕ Remove
+                          Remove
                         </Button>
                       </div>
                     </SortableBlockWrapper>

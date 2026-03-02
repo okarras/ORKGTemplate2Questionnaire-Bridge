@@ -218,20 +218,19 @@ export function TextBlock({
 
   return (
     <div className="group relative w-full">
-      <div className="rounded-lg border border-default-200 bg-default-50/40 px-4 py-3">
+      <div className="rounded-xl border border-default-200 bg-default-50/60 px-5 py-4 shadow-sm transition-shadow hover:shadow-md">
         {block.heading && (
-          <h3 className="mb-1 text-sm font-semibold text-default-700">
+          <h3 className="mb-2 text-base font-semibold text-default-800">
             {block.heading}
           </h3>
         )}
-        <p className="whitespace-pre-wrap text-sm text-default-600">
-          {block.body || "No content yet"}
+        <p className="whitespace-pre-wrap text-sm leading-relaxed text-default-700">
+          {block.body || <span className="italic text-default-400">No content yet</span>}
         </p>
       </div>
       {editMode && (
-        <div className="absolute -right-2 -top-2 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+        <div className="absolute -right-1 -top-1 z-10 flex gap-1 rounded-lg bg-background/95 p-1 shadow-md opacity-0 transition-opacity group-hover:opacity-100">
           <Button
-            className="shadow-md"
             size="sm"
             variant="flat"
             onPress={() => {
@@ -243,7 +242,6 @@ export function TextBlock({
             Edit
           </Button>
           <Button
-            className="shadow-md"
             color="danger"
             size="sm"
             variant="flat"
@@ -362,11 +360,11 @@ export function SectionBlock({
 
   return (
     <div className="group relative w-full">
-      <Divider className="my-2" />
-      <h3 className="mt-2 text-base font-semibold text-primary">
-        {block.title || "Untitled section"}
-      </h3>
-      <Divider className="my-2" />
+      <div className="rounded-xl border border-primary/20 bg-primary/5 px-5 py-4">
+        <h3 className="text-base font-semibold text-primary">
+          {block.title || "Untitled section"}
+        </h3>
+      </div>
       {(() => {
         const children = getChildBlocks
           ? getChildBlocks(block.id)
@@ -484,7 +482,7 @@ export function SectionBlock({
           );
 
         return (
-          <div className="ml-4 mt-3 space-y-4 border-l-2 border-primary/20 pl-4">
+          <div className="mt-4 space-y-4 rounded-lg border border-primary/15 bg-background/50 px-5 py-4">
             {listContent}
           </div>
         );
@@ -493,7 +491,7 @@ export function SectionBlock({
         <Dropdown>
           <DropdownTrigger>
             <Button
-              className="mt-2 border border-dashed border-default-300"
+              className="mt-3 border-2 border-dashed border-default-300 font-medium text-default-600 hover:border-primary hover:bg-primary/5 hover:text-primary"
               size="sm"
               variant="flat"
             >
@@ -529,9 +527,8 @@ export function SectionBlock({
         </Dropdown>
       )}
       {editMode && (
-        <div className="absolute -right-2 -top-1 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+        <div className="absolute -right-1 -top-1 z-10 flex gap-1 rounded-lg bg-background/95 p-1 shadow-md opacity-0 transition-opacity group-hover:opacity-100">
           <Button
-            className="shadow-md"
             size="sm"
             variant="flat"
             onPress={() => {
@@ -542,7 +539,6 @@ export function SectionBlock({
             Edit
           </Button>
           <Button
-            className="shadow-md"
             color="danger"
             size="sm"
             variant="flat"
@@ -675,12 +671,11 @@ export function HtmlBlock({
     <div className="group relative w-full">
       <div
         dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
-        className="[&_a]:text-primary [&_a]:underline [&_h1]:text-lg [&_h2]:text-base [&_h3]:text-sm [&_ul]:list-disc [&_ol]:list-decimal [&_li]:ml-4 rounded-lg border border-default-200 bg-default-50/40 px-4 py-3 text-sm text-default-700 [&_p]:mb-2"
+        className="[&_a]:text-primary [&_a]:underline [&_h1]:text-lg [&_h2]:text-base [&_h3]:text-sm [&_ul]:list-disc [&_ol]:list-decimal [&_li]:ml-4 rounded-xl border border-default-200 bg-default-50/60 px-5 py-4 text-sm leading-relaxed text-default-700 shadow-sm [&_p]:mb-2 [&_p:last-child]:mb-0"
       />
       {editMode && (
-        <div className="absolute -right-2 -top-2 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+        <div className="absolute -right-1 -top-1 z-10 flex gap-1 rounded-lg bg-background/95 p-1 shadow-md opacity-0 transition-opacity group-hover:opacity-100">
           <Button
-            className="shadow-md"
             size="sm"
             variant="flat"
             onPress={() => {
@@ -691,7 +686,6 @@ export function HtmlBlock({
             Edit
           </Button>
           <Button
-            className="shadow-md"
             color="danger"
             size="sm"
             variant="flat"
@@ -940,9 +934,8 @@ export function CustomFieldBlock({
         onChange={onChange}
       />
       {editMode && (
-        <div className="absolute -right-2 -top-2 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+        <div className="absolute -right-1 -top-1 z-10 flex gap-1 rounded-lg bg-background/95 p-1 shadow-md opacity-0 transition-opacity group-hover:opacity-100">
           <Button
-            className="shadow-md"
             size="sm"
             variant="flat"
             onPress={() => {
@@ -962,7 +955,6 @@ export function CustomFieldBlock({
             Edit
           </Button>
           <Button
-            className="shadow-md"
             color="danger"
             size="sm"
             variant="flat"

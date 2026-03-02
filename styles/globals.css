@@ -26,3 +26,19 @@ body {
 body {
     transition: background-color 0.3s ease;
 }
+
+/* Questionnaire-specific styles for improved UX */
+.questionnaire-form {
+    --q-spacing: 1.5rem;
+    --q-block-gap: 1.75rem;
+    --q-card-radius: 0.75rem;
+    --q-field-gap: 1.25rem;
+}
+
+/* Smoother focus transitions for questionnaire inputs */
+.questionnaire-form input,
+.questionnaire-form textarea,
+.questionnaire-form [role="combobox"],
+.questionnaire-form [role="listbox"] {
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
