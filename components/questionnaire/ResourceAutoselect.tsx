@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Select, SelectItem } from "@heroui/select";
+import { Autocomplete, AutocompleteItem } from "@heroui/autocomplete";
 import { Spinner } from "@heroui/spinner";
 import { Link } from "@heroui/link";
 
@@ -104,50 +104,31 @@ export function ResourceAutoselect({
 
   return (
     <div className="flex flex-col gap-1.5">
-      <Select
+      <Autocomplete
         className="w-full"
-        classNames={{
-          trigger:
-            "border-default-200 bg-transparent min-h-11 shadow-none hover:bg-default-100 data-[hover=true]:bg-default-100 data-[focus=true]:border-default-400 data-[focus=true]:bg-transparent",
-          value: "text-foreground",
-          listboxWrapper: "max-h-[280px]",
-        }}
-        description={
-          resources.length === 0
-            ? undefined
-            : `${resources.length} option${resources.length === 1 ? "" : "s"} from ORKG`
-        }
-        disableAnimation={false}
         id={id}
         isDisabled={resources.length === 0}
         label={
           <FieldLabel classId={classId} label={label} propertyId={propertyId} />
         }
         labelPlacement="outside"
-        listboxProps={{
-          emptyContent: "No ORKG resources found for this field",
-          classNames: {
-            list: "py-1",
-          },
-        }}
         placeholder={
           placeholder ??
           (multiselect
-            ? "Select one or more from options..."
-            : "Select from options...")
+            ? "Search and select one or more..."
+            : "Search and select...")
         }
-        popoverProps={{
-          classNames: {
-            content: "p-0",
-          },
-        }}
-        scrollShadowProps={{ visibility: "both" }}
+        selectedKey={
+          multiselect
+            ? undefined
+            : typeof value === "string" && value
+              ? value
+              : undefined
+        }
         selectedKeys={
           multiselect
             ? new Set(Array.isArray(value) ? value : [])
-            : typeof value === "string" && value
-              ? new Set([value])
-              : new Set()
+            : undefined
         }
         selectionMode={multiselect ? "multiple" : "single"}
         variant="bordered"
@@ -166,11 +147,9 @@ export function ResourceAutoselect({
           const displayLabel = r.label || r.id.split("/").pop() || r.id;
 
           return (
-            <SelectItem
+            <AutocompleteItem
               key={r.id}
-              classNames={{
-                base: "data-[selected=true]:bg-default-100 data-[hover=true]:bg-default-50",
-              }}
+              textValue={displayLabel}
               endContent={
                 orkgUrl ? (
                   <Link
@@ -200,14 +179,12 @@ export function ResourceAutoselect({
                   </Link>
                 ) : undefined
               }
-              shouldHighlightOnFocus={false}
-              textValue={displayLabel}
             >
               {displayLabel}
-            </SelectItem>
+            </AutocompleteItem>
           );
         })}
-      </Select>
+      </Autocomplete>
       {createResourceUrl && (
         <Link
           isExternal

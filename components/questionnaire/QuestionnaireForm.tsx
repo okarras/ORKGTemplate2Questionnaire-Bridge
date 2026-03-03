@@ -7,7 +7,7 @@ import type {
 } from "@/types/template";
 import type { InputType } from "@/types/template";
 
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState, type ChangeEvent } from "react";
 import Link from "next/link";
 import { Button } from "@heroui/button";
 import { Switch } from "@heroui/switch";
@@ -107,6 +107,47 @@ function flattenForJson(v: FormValue, prop: SubtemplateProperty): unknown {
   return v;
 }
 
+function inflateFromJson(src: unknown, prop: SubtemplateProperty): FormValue {
+  const hasSubs =
+    prop.subtemplate_properties &&
+    Object.keys(prop.subtemplate_properties).length > 0;
+
+  if (hasSubs) {
+    const srcObj =
+      src && typeof src === "object" && !Array.isArray(src)
+        ? (src as Record<string, unknown>)
+        : {};
+    const result: Record<string, FormValue> = { _: "" };
+
+    if ("value" in srcObj && srcObj.value !== undefined) {
+      result._ = srcObj.value as PropertyValue;
+    }
+
+    for (const [k, subProp] of Object.entries(
+      prop.subtemplate_properties as Record<string, SubtemplateProperty>,
+    )) {
+      result[k] = inflateFromJson(srcObj[k], subProp);
+    }
+
+    return result;
+  }
+
+  if (src === undefined || src === null || src === "") {
+    return "";
+  }
+
+  if (
+    typeof src === "string" ||
+    typeof src === "number" ||
+    typeof src === "boolean" ||
+    Array.isArray(src)
+  ) {
+    return src as FormValue;
+  }
+
+  return "";
+}
+
 export interface SelectOption {
   value: string;
   label: string;
@@ -163,6 +204,7 @@ export function QuestionnaireForm({
   );
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [editMode, setEditMode] = useState(true);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [structure, setStructure, { undo, redo, canUndo, canRedo }] =
     useUndoableState<StructureState>({
@@ -575,6 +617,55 @@ export function QuestionnaireForm({
     URL.revokeObjectURL(url);
   }, [templateId, label, mapping, values]);
 
+  const handleImportJson = useCallback(
+    async (event: ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+
+      if (!file) return;
+
+      try {
+        const text = await file.text();
+        const data = JSON.parse(text) as {
+          templateId?: string;
+          answers?: Record<string, unknown>;
+          customAnswers?: Record<string, unknown>;
+        };
+
+        const answers = data.answers ?? {};
+        const customAnswers = data.customAnswers ?? {};
+
+        setValues((prev) => {
+          const next = { ...prev };
+
+          for (const [propId, prop] of Object.entries(mapping)) {
+            const srcVal = (answers as Record<string, unknown>)[propId];
+
+            if (srcVal !== undefined) {
+              next[propId] = inflateFromJson(srcVal, prop);
+            }
+          }
+
+          for (const [customId, v] of Object.entries(customAnswers)) {
+            next[CUSTOM_PREFIX + customId] = (v as FormValue) ?? "";
+          }
+
+          return next;
+        });
+      } catch (err) {
+        console.error("Import JSON failed:", err);
+        alert(
+          `Import JSON failed: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      } finally {
+        // Allow selecting the same file again if needed
+        event.target.value = "";
+      }
+    },
+    [mapping, setValues],
+  );
+
   const handleExportPdf = useCallback(async () => {
     try {
       const pdfDoc = await PDFDocument.create();
@@ -714,10 +805,99 @@ export function QuestionnaireForm({
       const getType = (path: string, prop: SubtemplateProperty): InputType =>
         getInputTypeForPath(path, prop);
 
+      const getValueForPath = (
+        path: string,
+        prop: SubtemplateProperty,
+      ): FormValue | undefined => {
+        const segments = path.split(".");
+
+        if (!segments.length) return undefined;
+
+        const rootId = segments[0]!;
+        let current = values[rootId];
+
+        if (current === undefined) return undefined;
+
+        if (segments.length === 1) {
+          if (
+            typeof current === "object" &&
+            current !== null &&
+            !Array.isArray(current) &&
+            prop.subtemplate_properties &&
+            Object.keys(prop.subtemplate_properties).length > 0
+          ) {
+            const obj = current as Record<string, FormValue>;
+
+            return obj._ ?? "";
+          }
+
+          return current;
+        }
+
+        if (
+          typeof current !== "object" ||
+          current === null ||
+          Array.isArray(current)
+        ) {
+          return undefined;
+        }
+
+        let obj: unknown = current;
+
+        for (let i = 1; i < segments.length; i++) {
+          const key = segments[i]!;
+
+          if (
+            typeof obj !== "object" ||
+            obj === null ||
+            Array.isArray(obj) ||
+            !(key in (obj as Record<string, unknown>))
+          ) {
+            return undefined;
+          }
+
+          obj = (obj as Record<string, unknown>)[key];
+        }
+
+        if (
+          typeof obj === "object" &&
+          obj !== null &&
+          !Array.isArray(obj) &&
+          prop.subtemplate_properties &&
+          Object.keys(prop.subtemplate_properties).length > 0
+        ) {
+          const nested = obj as Record<string, FormValue>;
+
+          return nested._ ?? "";
+        }
+
+        return obj as FormValue;
+      };
+
+      const toDisplayString = (v: FormValue | undefined): string => {
+        if (v === undefined || v === null) return "";
+        if (typeof v === "boolean") return v ? "true" : "false";
+        if (Array.isArray(v)) return v.join(", ");
+
+        return String(v);
+      };
+
+      const toBool = (v: FormValue | undefined): boolean => {
+        if (typeof v === "boolean") return v;
+        if (typeof v === "number") return v !== 0;
+        if (typeof v === "string") {
+          const s = v.trim().toLowerCase();
+
+          return s === "true" || s === "yes" || s === "1";
+        }
+
+        return false;
+      };
+
       const fetchOptions = async (
         pid: string,
         cid?: string,
-      ): Promise<string[]> => {
+      ): Promise<{ value: string; label: string }[]> => {
         try {
           const hasP = pid.match(/^P\d+$/);
           const hasC = cid?.match(/^C\d+$/);
@@ -733,9 +913,12 @@ export function QuestionnaireForm({
 
           return (data.resources ?? []).map(
             (r: { id: string; label: string }) => {
-              const lbl = r.label || r.id.split("/").pop() || r.id;
+              const rawLabel = r.label || r.id.split("/").pop() || r.id;
 
-              return lbl.replace(/[^\x20-\x7E\xA0-\xFF]/g, "?");
+              return {
+                value: r.id,
+                label: rawLabel.replace(/[^\x20-\x7E\xA0-\xFF]/g, "?"),
+              };
             },
           );
         } catch {
@@ -749,7 +932,7 @@ export function QuestionnaireForm({
         type: InputType,
         pid: string,
         prop: SubtemplateProperty,
-      ): Promise<string[]> => {
+      ): Promise<{ value: string; label: string }[]> => {
         if (type === "resource") {
           return fetchOptions(pid, prop.class_id);
         }
@@ -757,22 +940,35 @@ export function QuestionnaireForm({
           const o = fieldOverrides[path];
 
           if (o?.selectOptions && o.selectOptions.length > 0) {
-            return o.selectOptions.map((opt) =>
-              (opt.label || opt.value).replace(/[^\x20-\x7E\xA0-\xFF]/g, "?"),
-            );
+            return o.selectOptions.map((opt) => ({
+              value: opt.value,
+              label: (opt.label || opt.value).replace(
+                /[^\x20-\x7E\xA0-\xFF]/g,
+                "?",
+              ),
+            }));
           }
 
-          return ["Option 1", "Option 2", "Option 3", "Other"];
+          return [
+            { value: "option1", label: "Option 1" },
+            { value: "option2", label: "Option 2" },
+            { value: "option3", label: "Option 3" },
+            { value: "other", label: "Other" },
+          ];
         }
         if (type === "scale") {
           const sc = fieldOverrides[path]?.scaleConfig ?? { min: 1, max: 5 };
           const { min, max, minLabel, maxLabel } = sc;
-          const labels: string[] = [];
+          const labels: { value: string; label: string }[] = [];
 
           for (let i = min; i <= max; i++) {
-            if (i === min && minLabel) labels.push(minLabel);
-            else if (i === max && maxLabel) labels.push(maxLabel);
-            else labels.push(String(i));
+            if (i === min && minLabel) {
+              labels.push({ value: String(i), label: minLabel });
+            } else if (i === max && maxLabel) {
+              labels.push({ value: String(i), label: maxLabel });
+            } else {
+              labels.push({ value: String(i), label: String(i) });
+            }
           }
 
           return labels;
@@ -788,6 +984,7 @@ export function QuestionnaireForm({
         pid: string,
         prop: SubtemplateProperty,
         path: string,
+        fieldValue?: FormValue,
       ) => {
         const name = `f_${fc++}`;
 
@@ -803,6 +1000,9 @@ export function QuestionnaireForm({
             borderColor: fieldBdr,
             borderWidth: 1,
           });
+          if (toBool(fieldValue)) {
+            cb.check();
+          }
           y += 20;
         } else if (
           type === "resource" ||
@@ -815,7 +1015,7 @@ export function QuestionnaireForm({
           if (opts.length > 0) {
             const dd = form.createDropdown(name);
 
-            dd.addOptions(opts);
+            dd.addOptions(opts.map((o) => o.label));
             dd.addToPage(page, {
               x,
               y: py(y + 22),
@@ -825,6 +1025,20 @@ export function QuestionnaireForm({
               borderWidth: 1,
               backgroundColor: fieldFill,
             });
+            const valueStr =
+              Array.isArray(fieldValue) && fieldValue.length > 0
+                ? String(fieldValue[0])
+                : typeof fieldValue === "string" || typeof fieldValue === "number"
+                  ? String(fieldValue)
+                  : undefined;
+
+            if (valueStr) {
+              const match = opts.find((opt) => opt.value === valueStr);
+
+              if (match) {
+                dd.select(match.label);
+              }
+            }
           } else {
             const tf = form.createTextField(name);
 
@@ -837,6 +1051,11 @@ export function QuestionnaireForm({
               borderWidth: 1,
               backgroundColor: fieldFill,
             });
+            const display = toDisplayString(fieldValue);
+
+            if (display) {
+              tf.setText(display);
+            }
           }
           y += 28;
         } else {
@@ -855,6 +1074,11 @@ export function QuestionnaireForm({
             borderWidth: 1,
             backgroundColor: fieldFill,
           });
+          const display = toDisplayString(fieldValue);
+
+          if (display) {
+            tf.setText(display);
+          }
           y += h + 6;
         }
       };
@@ -987,6 +1211,8 @@ export function QuestionnaireForm({
           y += 4;
 
           // Form field
+          const valueForField = getValueForPath(path, prop);
+
           await drawField(
             type,
             x0 + 10,
@@ -994,6 +1220,7 @@ export function QuestionnaireForm({
             path.split(".").pop() ?? path,
             effectiveProp,
             path,
+            valueForField,
           );
 
           // Sub-properties
@@ -1056,6 +1283,8 @@ export function QuestionnaireForm({
           }
 
           // Form field
+          const valueForField = getValueForPath(path, prop);
+
           await drawField(
             type,
             x0 + 10,
@@ -1063,6 +1292,7 @@ export function QuestionnaireForm({
             path.split(".").pop() ?? path,
             effectiveProp,
             path,
+            valueForField,
           );
 
           // Sub-properties
@@ -1194,21 +1424,28 @@ export function QuestionnaireForm({
             block.type === "customField" &&
             block.inputType === "select" &&
             block.selectOptions
-              ? block.selectOptions.map((o) =>
-                  (o.label || o.value).replace(/[^\x20-\x7E\xA0-\xFF]/g, "?"),
-                )
+              ? block.selectOptions.map((o) => ({
+                  value: o.value,
+                  label: (o.label || o.value).replace(
+                    /[^\x20-\x7E\xA0-\xFF]/g,
+                    "?",
+                  ),
+                }))
               : block.type === "customField" &&
                   block.inputType === "scale" &&
                   block.scaleConfig
                 ? (() => {
                     const sc = block.scaleConfig;
-                    const labels: string[] = [];
+                    const labels: { value: string; label: string }[] = [];
 
                     for (let i = sc.min; i <= sc.max; i++) {
-                      if (i === sc.min && sc.minLabel) labels.push(sc.minLabel);
-                      else if (i === sc.max && sc.maxLabel)
-                        labels.push(sc.maxLabel);
-                      else labels.push(String(i));
+                      if (i === sc.min && sc.minLabel) {
+                        labels.push({ value: String(i), label: sc.minLabel });
+                      } else if (i === sc.max && sc.maxLabel) {
+                        labels.push({ value: String(i), label: sc.maxLabel });
+                      } else {
+                        labels.push({ value: String(i), label: String(i) });
+                      }
                     }
 
                     return labels;
@@ -1218,12 +1455,15 @@ export function QuestionnaireForm({
             type: InputType,
             x: number,
             w: number,
+            fieldValue?: FormValue,
           ) => {
             const name = `f_${fc++}`;
 
             if (type === "checkbox") {
               need(18);
-              form.createCheckBox(name).addToPage(page, {
+              const cb = form.createCheckBox(name);
+
+              cb.addToPage(page, {
                 x,
                 y: py(y + 14),
                 width: 14,
@@ -1231,6 +1471,9 @@ export function QuestionnaireForm({
                 borderColor: fieldBdr,
                 borderWidth: 1,
               });
+              if (toBool(fieldValue)) {
+                cb.check();
+              }
               y += 20;
             } else if (
               (type === "select" || type === "scale") &&
@@ -1239,7 +1482,7 @@ export function QuestionnaireForm({
               need(26);
               const dd = form.createDropdown(name);
 
-              dd.addOptions(opts);
+              dd.addOptions(opts.map((o) => o.label));
               dd.addToPage(page, {
                 x,
                 y: py(y + 22),
@@ -1249,6 +1492,21 @@ export function QuestionnaireForm({
                 borderWidth: 1,
                 backgroundColor: fieldFill,
               });
+              const valueStr =
+                Array.isArray(fieldValue) && fieldValue.length > 0
+                  ? String(fieldValue[0])
+                  : typeof fieldValue === "string" ||
+                      typeof fieldValue === "number"
+                    ? String(fieldValue)
+                    : undefined;
+
+              if (valueStr) {
+                const match = opts.find((opt) => opt.value === valueStr);
+
+                if (match) {
+                  dd.select(match.label);
+                }
+              }
               y += 28;
             } else {
               const h = type === "textarea" ? 44 : 22;
@@ -1266,11 +1524,23 @@ export function QuestionnaireForm({
                 borderWidth: 1,
                 backgroundColor: fieldFill,
               });
+              const display = toDisplayString(fieldValue);
+
+              if (display) {
+                tf.setText(display);
+              }
               y += h + 6;
             }
           };
 
-          await customDrawField(block.inputType, x0 + 10, fw - 16);
+          const customValue = values[CUSTOM_PREFIX + block.id];
+
+          await customDrawField(
+            block.inputType,
+            x0 + 10,
+            fw - 16,
+            customValue,
+          );
           y += 8;
         } else if (block.type === "html" && block.html) {
           const stripped = block.html
@@ -1386,6 +1656,7 @@ export function QuestionnaireForm({
     getInputTypeForPath,
     orderedBlocks,
     customBlocks,
+    values,
   ]);
 
   const AddBlockDropdown = useCallback(
@@ -1502,6 +1773,21 @@ export function QuestionnaireForm({
           )}
           <div className="h-4 w-px bg-default-300" />
           <div className="flex items-center gap-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="application/json"
+              className="hidden"
+              onChange={handleImportJson}
+            />
+            <Button
+              color="primary"
+              size="sm"
+              variant="flat"
+              onPress={() => fileInputRef.current?.click()}
+            >
+              Import JSON
+            </Button>
             <Button
               color="primary"
               size="sm"

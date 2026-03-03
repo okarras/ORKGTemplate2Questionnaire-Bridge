@@ -417,34 +417,33 @@ export function TemplatePropertyRenderer({
 
   // Property with nested subtemplate_properties
   return (
-    <Card className="w-full overflow-hidden rounded-xl border border-default-200 shadow-sm" shadow="sm">
-      <CardHeader className="flex flex-col items-start gap-1 border-b border-default-200/60 px-5 pt-5">
-        <div className="w-full">
-          <DynamicFieldInput
-            cardinality={property.cardinality}
-            classId={property.class_id}
-            createLink={property.create_link}
-            inputType={inputType}
-            label={effectiveLabel}
-            placeholder={effectiveDescription}
-            propertyId={propertyId}
-            scaleConfig={scaleConfig}
-            selectOptions={selectOptions}
-            value={value}
-            onChange={onChange}
-          />
-        </div>
-        {fieldEditorUi}
-      </CardHeader>
-      <CardBody className="px-5 pb-5 pt-4">
-        <div className="ml-2 mt-1 rounded-lg border border-default-100 bg-default-50/30 px-5 py-4">
-          {effectiveDescription && (
-            <p className="mb-3 text-sm text-default-500">
-              {effectiveDescription}
-            </p>
-          )}
-          <Accordion className="gap-2" variant="bordered" itemClasses={{ base: "rounded-xl border-default-200 overflow-hidden" }}>
-            {[
+    <div className="w-full space-y-3">
+      <DynamicFieldInput
+        cardinality={property.cardinality}
+        classId={property.class_id}
+        createLink={property.create_link}
+        inputType={inputType}
+        label={effectiveLabel}
+        placeholder={effectiveDescription}
+        propertyId={propertyId}
+        scaleConfig={scaleConfig}
+        selectOptions={selectOptions}
+        value={value}
+        onChange={onChange}
+      />
+      {fieldEditorUi}
+      <div className="ml-3 border-l border-default-200/70 pl-4">
+        {effectiveDescription && (
+          <p className="mb-2 text-xs text-default-500">{effectiveDescription}</p>
+        )}
+        <Accordion
+          className="gap-1"
+          variant="shadow"
+          itemClasses={{
+            base: "rounded-lg border-none bg-transparent",
+          }}
+        >
+          {[
               ...Object.entries(property.subtemplate_properties!).map(
                 ([subPropId, subProp]) => (
                 <AccordionItem
@@ -630,48 +629,47 @@ export function TemplatePropertyRenderer({
               return null;
             }),
             ]}
-          </Accordion>
-          {editMode && onAddNestedBlock && (
-            <Dropdown className="mt-2">
-              <DropdownTrigger>
-                <Button
-                  className="w-full border border-dashed border-default-300"
-                  size="sm"
-                  variant="flat"
-                >
-                  + Add block to this section
-                </Button>
-              </DropdownTrigger>
-              <DropdownMenu aria-label="Add block">
-                <DropdownItem
-                  key="text"
-                  onPress={() => onAddNestedBlock(propertyPath!, "text")}
-                >
-                  Text
-                </DropdownItem>
-                <DropdownItem
-                  key="section"
-                  onPress={() => onAddNestedBlock(propertyPath!, "section")}
-                >
-                  Section
-                </DropdownItem>
-                <DropdownItem
-                  key="field"
-                  onPress={() => onAddNestedBlock(propertyPath!, "customField")}
-                >
-                  Field
-                </DropdownItem>
-                <DropdownItem
-                  key="html"
-                  onPress={() => onAddNestedBlock(propertyPath!, "html")}
-                >
-                  HTML
-                </DropdownItem>
-              </DropdownMenu>
-            </Dropdown>
-          )}
-        </div>
-      </CardBody>
-    </Card>
+        </Accordion>
+        {editMode && onAddNestedBlock && (
+          <Dropdown className="mt-2">
+            <DropdownTrigger>
+              <Button
+                className="w-full border border-dashed border-default-300"
+                size="sm"
+                variant="flat"
+              >
+                + Add block to this section
+              </Button>
+            </DropdownTrigger>
+            <DropdownMenu aria-label="Add block">
+              <DropdownItem
+                key="text"
+                onPress={() => onAddNestedBlock(propertyPath!, "text")}
+              >
+                Text
+              </DropdownItem>
+              <DropdownItem
+                key="section"
+                onPress={() => onAddNestedBlock(propertyPath!, "section")}
+              >
+                Section
+              </DropdownItem>
+              <DropdownItem
+                key="field"
+                onPress={() => onAddNestedBlock(propertyPath!, "customField")}
+              >
+                Field
+              </DropdownItem>
+              <DropdownItem
+                key="html"
+                onPress={() => onAddNestedBlock(propertyPath!, "html")}
+              >
+                HTML
+              </DropdownItem>
+            </DropdownMenu>
+          </Dropdown>
+        )}
+      </div>
+    </div>
   );
 }
