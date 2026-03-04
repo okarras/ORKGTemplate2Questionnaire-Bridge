@@ -36,7 +36,10 @@ export interface EnrichedSubtemplateProperty extends SubtemplateProperty {
 }
 
 export type TemplateMapping = Record<string, SubtemplateProperty>;
-export type EnrichedTemplateMapping = Record<string, EnrichedSubtemplateProperty>;
+export type EnrichedTemplateMapping = Record<
+  string,
+  EnrichedSubtemplateProperty
+>;
 
 /** Custom block types that can be inserted into the questionnaire */
 export type CustomBlockType = "text" | "section" | "customField" | "html";
@@ -63,7 +66,12 @@ export interface CustomFieldBlockData {
   inputType: InputType;
   description?: string;
   selectOptions?: { value: string; label: string }[];
-  scaleConfig?: { min: number; max: number; minLabel?: string; maxLabel?: string };
+  scaleConfig?: {
+    min: number;
+    max: number;
+    minLabel?: string;
+    maxLabel?: string;
+  };
 }
 
 export interface HtmlBlockData {

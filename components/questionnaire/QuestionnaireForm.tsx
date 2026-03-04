@@ -6,6 +6,7 @@ import type {
   SubtemplateProperty,
 } from "@/types/template";
 import type { InputType } from "@/types/template";
+import type { DragEndEvent } from "@dnd-kit/core";
 
 import { useCallback, useRef, useState, type ChangeEvent } from "react";
 import Link from "next/link";
@@ -19,6 +20,7 @@ import {
   DropdownSection,
 } from "@heroui/dropdown";
 import { PDFDocument, PDFName, PDFString, StandardFonts, rgb } from "pdf-lib";
+import { DndContext, closestCenter } from "@dnd-kit/core";
 
 import { TemplatePropertyRenderer } from "./TemplatePropertyRenderer";
 import {
@@ -35,11 +37,6 @@ import {
   useBlockDndSensors,
   verticalListSortingStrategy,
 } from "./SortableBlockItem";
-import type { DragEndEvent } from "@dnd-kit/core";
-import {
-  DndContext,
-  closestCenter,
-} from "@dnd-kit/core";
 import {
   getInputTypeForProperty,
   getInputTypeFromValueType,
@@ -1028,7 +1025,8 @@ export function QuestionnaireForm({
             const valueStr =
               Array.isArray(fieldValue) && fieldValue.length > 0
                 ? String(fieldValue[0])
-                : typeof fieldValue === "string" || typeof fieldValue === "number"
+                : typeof fieldValue === "string" ||
+                    typeof fieldValue === "number"
                   ? String(fieldValue)
                   : undefined;
 
@@ -1535,12 +1533,7 @@ export function QuestionnaireForm({
 
           const customValue = values[CUSTOM_PREFIX + block.id];
 
-          await customDrawField(
-            block.inputType,
-            x0 + 10,
-            fw - 16,
-            customValue,
-          );
+          await customDrawField(block.inputType, x0 + 10, fw - 16, customValue);
           y += 8;
         } else if (block.type === "html" && block.html) {
           const stripped = block.html
@@ -1714,7 +1707,10 @@ export function QuestionnaireForm({
               {label}
             </h1>
             <p className="mt-1.5 text-sm text-default-500">
-              Template: <code className="rounded bg-default-200 px-1.5 py-0.5 text-xs">{templateId}</code>
+              Template:{" "}
+              <code className="rounded bg-default-200 px-1.5 py-0.5 text-xs">
+                {templateId}
+              </code>
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -1722,10 +1718,10 @@ export function QuestionnaireForm({
               {editMode ? "Edit mode" : "Fill mode"}
             </span>
             <Switch
+              classNames={{ wrapper: "group-data-[selected=true]:bg-primary" }}
               isSelected={editMode}
               size="md"
               onValueChange={setEditMode}
-              classNames={{ wrapper: "group-data-[selected=true]:bg-primary" }}
             />
           </div>
         </div>
@@ -1736,11 +1732,11 @@ export function QuestionnaireForm({
         <div className="flex flex-wrap items-center gap-3">
           <Button
             as={Link}
+            className="font-medium"
             color="primary"
             href={backHref}
             size="sm"
             variant="flat"
-            className="font-medium"
           >
             ← Back to templates
           </Button>
@@ -1749,10 +1745,10 @@ export function QuestionnaireForm({
             <div className="flex items-center gap-1">
               {canUndo && (
                 <Button
+                  className="min-w-0"
                   size="sm"
                   title="Undo last change"
                   variant="flat"
-                  className="min-w-0"
                   onPress={undo}
                 >
                   Undo
@@ -1760,10 +1756,10 @@ export function QuestionnaireForm({
               )}
               {canRedo && (
                 <Button
+                  className="min-w-0"
                   size="sm"
                   title="Redo"
                   variant="flat"
-                  className="min-w-0"
                   onPress={redo}
                 >
                   Redo
@@ -1775,9 +1771,9 @@ export function QuestionnaireForm({
           <div className="flex items-center gap-2">
             <input
               ref={fileInputRef}
-              type="file"
               accept="application/json"
               className="hidden"
+              type="file"
               onChange={handleImportJson}
             />
             <Button
@@ -1826,8 +1822,8 @@ export function QuestionnaireForm({
         )}
         <DndContext
           collisionDetection={closestCenter}
-          onDragEnd={handleDragEnd}
           sensors={sensors}
+          onDragEnd={handleDragEnd}
         >
           <SortableContext
             items={orderedBlocks.map(getBlockSortId)}
@@ -1839,134 +1835,138 @@ export function QuestionnaireForm({
                 block.kind === "property" ? (
                   <>
                     <TemplatePropertyRenderer
-                  customBlocks={customBlocks}
-                  editMode={editMode}
-                  fieldOverrides={fieldOverrides}
-                  getInputTypeForPath={getInputTypeForPath}
-                  nestedCustomBlockIds={nestedCustomBlocks[block.id] ?? []}
-                  nestedCustomBlocksRecord={nestedCustomBlocks}
-                  onAddNestedBlock={addNestedBlock}
-                  onFieldOverride={onFieldOverride}
-                  onRemoveNestedBlock={removeNestedBlock}
-                  onUpdateCustomBlock={updateCustomBlock}
-                  onAddChildToSection={addChildToSection}
-                  onRemoveChildFromSection={removeChildFromSection}
-                  onReorderSectionChildren={reorderSectionChildren}
-                  onNestedCustomValueChange={(blockId, v) =>
-                    setValue(`__custom_${blockId}`, v)
-                  }
-                  property={mapping[block.id]!}
-                  propertyId={block.id}
-                  propertyPath={block.id}
-                  value={getValue(
-                    block.id,
-                    !!mapping[block.id]?.subtemplate_properties?.length,
-                  )}
-                  values={values}
-                  onValueChange={(v) => setValue(block.id, v)}
-                />
-                {editMode && (
-                  <div className="flex justify-center">
-                    <AddBlockDropdown afterIndex={index} />
-                  </div>
-                )}
-              </>
-            ) : (
-              <>
-                {(() => {
-                  const custom = customBlocks[block.id];
-
-                  if (!custom) return null;
-                  if (custom.type === "text") {
-                    return (
-                      <TextBlock
-                        block={custom}
-                        editMode={editMode}
-                        onRemove={() => removeCustomBlock(block.id)}
-                        onUpdate={(b) => updateCustomBlock(block.id, b)}
-                      />
-                    );
-                  }
-                  if (custom.type === "html") {
-                    return (
-                      <HtmlBlock
-                        block={custom}
-                        editMode={editMode}
-                        onRemove={() => removeCustomBlock(block.id)}
-                        onUpdate={(b) => updateCustomBlock(block.id, b)}
-                      />
-                    );
-                  }
-                  if (custom.type === "section") {
-                    const sectionChildIds = custom.childIds ?? [];
-                    const sectionChildBlocks = sectionChildIds
-                      .map((cid) => customBlocks[cid])
-                      .filter(Boolean);
-
-                    return (
-                      <SectionBlock
-                        block={custom}
-                        childBlocks={sectionChildBlocks}
-                        editMode={editMode}
-                        getChildValue={(cid) =>
-                          (values[CUSTOM_PREFIX + cid] as
-                            | string
-                            | number
-                            | boolean
-                            | string[]
-                            | undefined) ?? ""
-                        }
-                        onAddChild={(sectionId, type) =>
-                          addChildToSection(sectionId, type)
-                        }
-                        onReorderChildren={reorderSectionChildren}
-                        onChildValueChange={(cid, v) =>
-                          setValue(CUSTOM_PREFIX + cid, v)
-                        }
-                        onRemove={() => removeCustomBlock(block.id)}
-                        getChildBlocks={(sectionId) => {
-                          const s = customBlocks[sectionId] as
-                            | { type: "section"; childIds?: string[] }
-                            | undefined;
-
-                          return (s?.childIds ?? [])
-                            .map((cid) => customBlocks[cid])
-                            .filter(Boolean) as CustomBlock[];
-                        }}
-                        onRemoveChild={(sectionId, cid) =>
-                          removeChildFromSection(sectionId, cid)
-                        }
-                        onUpdate={(b) => updateCustomBlock(block.id, b)}
-                        onUpdateChild={(cid, b) => updateCustomBlock(cid, b)}
-                      />
-                    );
-                  }
-
-                  return (
-                    <CustomFieldBlock
-                      block={custom}
+                      customBlocks={customBlocks}
                       editMode={editMode}
-                      value={
-                        (values[CUSTOM_PREFIX + block.id] as
-                          | string
-                          | number
-                          | boolean
-                          | string[]
-                          | undefined) ?? ""
+                      fieldOverrides={fieldOverrides}
+                      getInputTypeForPath={getInputTypeForPath}
+                      nestedCustomBlockIds={nestedCustomBlocks[block.id] ?? []}
+                      nestedCustomBlocksRecord={nestedCustomBlocks}
+                      property={mapping[block.id]!}
+                      propertyId={block.id}
+                      propertyPath={block.id}
+                      value={getValue(
+                        block.id,
+                        !!mapping[block.id]?.subtemplate_properties?.length,
+                      )}
+                      values={values}
+                      onAddChildToSection={addChildToSection}
+                      onAddNestedBlock={addNestedBlock}
+                      onFieldOverride={onFieldOverride}
+                      onNestedCustomValueChange={(blockId, v) =>
+                        setValue(`__custom_${blockId}`, v)
                       }
-                      onChange={(v) => setValue(CUSTOM_PREFIX + block.id, v)}
-                      onRemove={() => removeCustomBlock(block.id)}
-                      onUpdate={(b) => updateCustomBlock(block.id, b)}
+                      onRemoveChildFromSection={removeChildFromSection}
+                      onRemoveNestedBlock={removeNestedBlock}
+                      onReorderSectionChildren={reorderSectionChildren}
+                      onUpdateCustomBlock={updateCustomBlock}
+                      onValueChange={(v) => setValue(block.id, v)}
                     />
-                  );
-                })()}
-                {editMode && (
-                  <div className="flex justify-center">
-                    <AddBlockDropdown afterIndex={index} />
-                  </div>
-                )}
-              </>
-            );
+                    {editMode && (
+                      <div className="flex justify-center">
+                        <AddBlockDropdown afterIndex={index} />
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    {(() => {
+                      const custom = customBlocks[block.id];
+
+                      if (!custom) return null;
+                      if (custom.type === "text") {
+                        return (
+                          <TextBlock
+                            block={custom}
+                            editMode={editMode}
+                            onRemove={() => removeCustomBlock(block.id)}
+                            onUpdate={(b) => updateCustomBlock(block.id, b)}
+                          />
+                        );
+                      }
+                      if (custom.type === "html") {
+                        return (
+                          <HtmlBlock
+                            block={custom}
+                            editMode={editMode}
+                            onRemove={() => removeCustomBlock(block.id)}
+                            onUpdate={(b) => updateCustomBlock(block.id, b)}
+                          />
+                        );
+                      }
+                      if (custom.type === "section") {
+                        const sectionChildIds = custom.childIds ?? [];
+                        const sectionChildBlocks = sectionChildIds
+                          .map((cid) => customBlocks[cid])
+                          .filter(Boolean);
+
+                        return (
+                          <SectionBlock
+                            block={custom}
+                            childBlocks={sectionChildBlocks}
+                            editMode={editMode}
+                            getChildBlocks={(sectionId) => {
+                              const s = customBlocks[sectionId] as
+                                | { type: "section"; childIds?: string[] }
+                                | undefined;
+
+                              return (s?.childIds ?? [])
+                                .map((cid) => customBlocks[cid])
+                                .filter(Boolean) as CustomBlock[];
+                            }}
+                            getChildValue={(cid) =>
+                              (values[CUSTOM_PREFIX + cid] as
+                                | string
+                                | number
+                                | boolean
+                                | string[]
+                                | undefined) ?? ""
+                            }
+                            onAddChild={(sectionId, type) =>
+                              addChildToSection(sectionId, type)
+                            }
+                            onChildValueChange={(cid, v) =>
+                              setValue(CUSTOM_PREFIX + cid, v)
+                            }
+                            onRemove={() => removeCustomBlock(block.id)}
+                            onRemoveChild={(sectionId, cid) =>
+                              removeChildFromSection(sectionId, cid)
+                            }
+                            onReorderChildren={reorderSectionChildren}
+                            onUpdate={(b) => updateCustomBlock(block.id, b)}
+                            onUpdateChild={(cid, b) =>
+                              updateCustomBlock(cid, b)
+                            }
+                          />
+                        );
+                      }
+
+                      return (
+                        <CustomFieldBlock
+                          block={custom}
+                          editMode={editMode}
+                          value={
+                            (values[CUSTOM_PREFIX + block.id] as
+                              | string
+                              | number
+                              | boolean
+                              | string[]
+                              | undefined) ?? ""
+                          }
+                          onChange={(v) =>
+                            setValue(CUSTOM_PREFIX + block.id, v)
+                          }
+                          onRemove={() => removeCustomBlock(block.id)}
+                          onUpdate={(b) => updateCustomBlock(block.id, b)}
+                        />
+                      );
+                    })()}
+                    {editMode && (
+                      <div className="flex justify-center">
+                        <AddBlockDropdown afterIndex={index} />
+                      </div>
+                    )}
+                  </>
+                );
 
               return (
                 <div
@@ -1978,11 +1978,11 @@ export function QuestionnaireForm({
                       <div className="flex w-full items-start justify-between gap-4">
                         <div className="min-w-0 flex-1">{blockContent}</div>
                         <Button
+                          className="opacity-70 hover:opacity-100"
                           color="danger"
                           size="sm"
                           title="Remove this block"
                           variant="light"
-                          className="opacity-70 hover:opacity-100"
                           onPress={() => removeBlock(block)}
                         >
                           Remove

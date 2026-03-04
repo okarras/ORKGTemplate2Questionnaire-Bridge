@@ -30,7 +30,10 @@ export function useUndoableState<T>(initialState: T) {
     const prev = history.at(-1);
 
     if (prev !== undefined) {
-      setFuture((f) => [...f.slice(-(MAX_HISTORY - 1)), structuredClone(state)]);
+      setFuture((f) => [
+        ...f.slice(-(MAX_HISTORY - 1)),
+        structuredClone(state),
+      ]);
       setState(structuredClone(prev));
       setHistory((h) => h.slice(0, -1));
     }
@@ -40,7 +43,10 @@ export function useUndoableState<T>(initialState: T) {
     const next = future.at(-1);
 
     if (next !== undefined) {
-      setHistory((h) => [...h.slice(-(MAX_HISTORY - 1)), structuredClone(state)]);
+      setHistory((h) => [
+        ...h.slice(-(MAX_HISTORY - 1)),
+        structuredClone(state),
+      ]);
       setState(structuredClone(next));
       setFuture((f) => f.slice(0, -1));
     }

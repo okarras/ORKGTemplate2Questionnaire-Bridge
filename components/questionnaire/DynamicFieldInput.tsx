@@ -33,7 +33,8 @@ interface DynamicFieldInputProps {
 }
 
 const fieldInputClass = "w-full data-[focus=true]:border-primary";
-const inputWrapperClass = "rounded-lg border-default-200 data-[focus=true]:border-primary transition-colors";
+const inputWrapperClass =
+  "rounded-lg border-default-200 data-[focus=true]:border-primary transition-colors";
 
 const DEFAULT_SELECT_OPTIONS: SelectOption[] = [
   { value: "option1", label: "Option 1" },

@@ -1,10 +1,8 @@
 "use client";
 
 import {
-  DndContext,
   KeyboardSensor,
   PointerSensor,
-  closestCenter,
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
@@ -36,8 +34,14 @@ export function SortableBlockWrapper({
   id: string;
   children: React.ReactNode;
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({ id });
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -45,7 +49,11 @@ export function SortableBlockWrapper({
   };
 
   return (
-    <div ref={setNodeRef} style={style} className={isDragging ? "z-50 opacity-80" : ""}>
+    <div
+      ref={setNodeRef}
+      className={isDragging ? "z-50 opacity-80" : ""}
+      style={style}
+    >
       <div className="flex items-start gap-2">
         <div
           {...attributes}
@@ -54,13 +62,13 @@ export function SortableBlockWrapper({
           title="Drag to reorder"
         >
           <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
             fill="none"
+            height="16"
             stroke="currentColor"
             strokeWidth="2"
+            viewBox="0 0 24 24"
+            width="16"
+            xmlns="http://www.w3.org/2000/svg"
           >
             <circle cx="9" cy="5" r="1" />
             <circle cx="9" cy="12" r="1" />
@@ -79,6 +87,8 @@ export function SortableBlockWrapper({
 export function useBlockDndSensors() {
   return useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
   );
 }

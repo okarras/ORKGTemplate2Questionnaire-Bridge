@@ -5,15 +5,20 @@ import type {
   EnrichedSubtemplateProperty,
 } from "@/types/template";
 import type { InputType } from "@/types/template";
+import type {
+  FieldOverrides,
+  FormValue,
+  ScaleConfig,
+  SelectOption,
+} from "./QuestionnaireForm";
+import type { CustomBlock } from "@/types/template";
 
 import { useState, useCallback } from "react";
-import { Card, CardBody, CardHeader } from "@heroui/card";
 import { Accordion, AccordionItem } from "@heroui/accordion";
 import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
 import { Textarea } from "@heroui/input";
 import { Select, SelectItem } from "@heroui/select";
-
 import {
   Dropdown,
   DropdownItem,
@@ -32,13 +37,6 @@ import {
   getInputTypeForProperty,
   getInputTypeFromValueType,
 } from "./input-type-utils";
-import type {
-  FieldOverrides,
-  FormValue,
-  ScaleConfig,
-  SelectOption,
-} from "./QuestionnaireForm";
-import type { CustomBlock } from "@/types/template";
 
 type PropertyValue = string | number | boolean | string[];
 
@@ -55,9 +53,12 @@ const INPUT_TYPE_OPTIONS: { value: InputType; label: string }[] = [
 
 function toPropertyValue(v: FormValue | undefined): PropertyValue {
   if (v === undefined || v === null) return "";
-  if (typeof v === "object" && !Array.isArray(v) && "_" in v) return (v as { _?: PropertyValue })._ ?? "";
-  if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") return v;
+  if (typeof v === "object" && !Array.isArray(v) && "_" in v)
+    return (v as { _?: PropertyValue })._ ?? "";
+  if (typeof v === "string" || typeof v === "number" || typeof v === "boolean")
+    return v;
   if (Array.isArray(v)) return v;
+
   return "";
 }
 
@@ -70,7 +71,10 @@ interface TemplatePropertyRendererProps {
   /** Full path for overrides (e.g. "P31" or "P31.P110") - enables field editing */
   propertyPath?: string;
   fieldOverrides?: FieldOverrides;
-  onFieldOverride?: (path: string, overrides: Partial<FieldOverrides[string]>) => void;
+  onFieldOverride?: (
+    path: string,
+    overrides: Partial<FieldOverrides[string]>,
+  ) => void;
   getInputTypeForPath?: (path: string, prop: SubtemplateProperty) => InputType;
   /** When true, show edit panels; when false, hide them for cleaner view */
   editMode?: boolean;
@@ -124,16 +128,19 @@ export function TemplatePropertyRenderer({
   const [isEditing, setIsEditing] = useState(false);
   const [editLabel, setEditLabel] = useState("");
   const [editDescription, setEditDescription] = useState("");
-  const [editSelectOptions, setEditSelectOptions] = useState<SelectOption[]>([]);
-  const [editScaleConfig, setEditScaleConfig] = useState<ScaleConfig>({ min: 1, max: 5 });
+  const [editSelectOptions, setEditSelectOptions] = useState<SelectOption[]>(
+    [],
+  );
+  const [editScaleConfig, setEditScaleConfig] = useState<ScaleConfig>({
+    min: 1,
+    max: 5,
+  });
   const isControlled = controlledOnChange !== undefined;
 
   const propertyPath = propPath ?? propertyId;
   const canEdit = Boolean(onFieldOverride && getInputTypeForPath);
 
-  const value = isControlled
-    ? toPropertyValue(controlledValue)
-    : internalValue;
+  const value = isControlled ? toPropertyValue(controlledValue) : internalValue;
 
   const onChange = useCallback(
     (v: PropertyValue) => {
@@ -142,7 +149,13 @@ export function TemplatePropertyRenderer({
           property.subtemplate_properties &&
           Object.keys(property.subtemplate_properties).length > 0;
         const current = controlledValue;
-        if (hasSub && typeof current === "object" && current !== null && !Array.isArray(current)) {
+
+        if (
+          hasSub &&
+          typeof current === "object" &&
+          current !== null &&
+          !Array.isArray(current)
+        ) {
           controlledOnChange?.({ ...current, _: v });
         } else {
           controlledOnChange?.(v);
@@ -151,7 +164,12 @@ export function TemplatePropertyRenderer({
         setInternalValue(v);
       }
     },
-    [isControlled, controlledOnChange, controlledValue, property.subtemplate_properties],
+    [
+      isControlled,
+      controlledOnChange,
+      controlledValue,
+      property.subtemplate_properties,
+    ],
   );
 
   const overrides = fieldOverrides[propertyPath];
@@ -162,7 +180,9 @@ export function TemplatePropertyRenderer({
   const inputType = getInputTypeForPath
     ? getInputTypeForPath(propertyPath, property)
     : (property as EnrichedSubtemplateProperty).valueType !== undefined
-      ? getInputTypeFromValueType((property as EnrichedSubtemplateProperty).valueType!)
+      ? getInputTypeFromValueType(
+          (property as EnrichedSubtemplateProperty).valueType!,
+        )
       : getInputTypeForProperty(propertyId);
 
   const handleSaveEdit = useCallback(() => {
@@ -170,8 +190,11 @@ export function TemplatePropertyRenderer({
       label: editLabel.trim() || undefined,
       description: editDescription.trim() || undefined,
     };
+
     if (inputType === "select" && editSelectOptions.length > 0) {
-      payload.selectOptions = editSelectOptions.filter((o) => o.value.trim() || o.label.trim());
+      payload.selectOptions = editSelectOptions.filter(
+        (o) => o.value.trim() || o.label.trim(),
+      );
     }
     if (inputType === "scale") {
       payload.scaleConfig = editScaleConfig;
@@ -189,12 +212,18 @@ export function TemplatePropertyRenderer({
   ]);
 
   const handleFieldTypeChange = useCallback(
-    (keys: Parameters<NonNullable<React.ComponentProps<typeof Select>["onSelectionChange"]>>[0]) => {
+    (
+      keys: Parameters<
+        NonNullable<React.ComponentProps<typeof Select>["onSelectionChange"]>
+      >[0],
+    ) => {
       const keySet = keys instanceof Set ? keys : new Set<string>();
       const first = keySet.values().next().value;
 
       if (first != null) {
-        onFieldOverride?.(propertyPath, { inputType: String(first) as InputType });
+        onFieldOverride?.(propertyPath, {
+          inputType: String(first) as InputType,
+        });
       }
     },
     [onFieldOverride, propertyPath],
@@ -204,18 +233,27 @@ export function TemplatePropertyRenderer({
     property.subtemplate_properties &&
     Object.keys(property.subtemplate_properties).length > 0;
 
-  const hasOverrides = Boolean(overrides?.label ?? overrides?.description ?? overrides?.inputType ?? overrides?.selectOptions ?? overrides?.scaleConfig);
+  const hasOverrides = Boolean(
+    overrides?.label ??
+      overrides?.description ??
+      overrides?.inputType ??
+      overrides?.selectOptions ??
+      overrides?.scaleConfig,
+  );
   const fieldEditorUi = canEdit && editMode && (
     <Accordion
       className="mt-3 w-full gap-0 px-0"
+      itemClasses={{
+        base: "border-default-200 rounded-xl overflow-hidden shadow-sm",
+      }}
       variant="bordered"
-      itemClasses={{ base: "border-default-200 rounded-xl overflow-hidden shadow-sm" }}
     >
       <AccordionItem
         key="edit"
         aria-label="Customize field"
         classNames={{
-          trigger: "py-2.5 px-4 data-[hover=true]:bg-default-100/80 min-h-0 rounded-xl",
+          trigger:
+            "py-2.5 px-4 data-[hover=true]:bg-default-100/80 min-h-0 rounded-xl",
           content: "px-4 pb-4 pt-1",
           title: "text-sm font-medium text-default-600",
         }}
@@ -232,15 +270,30 @@ export function TemplatePropertyRenderer({
           {!isEditing ? (
             <div className="flex items-center gap-2">
               <Button
+                color="primary"
                 size="sm"
                 variant="flat"
-                color="primary"
                 onPress={() => {
                   const o = fieldOverrides[propertyPath];
+
                   setEditLabel(o?.label ?? property.label);
-                  setEditDescription(o?.description ?? property.description ?? "");
-                  setEditSelectOptions(o?.selectOptions ?? [{ value: "opt1", label: "Option 1" }, { value: "other", label: "Other/Comments" }]);
-                  setEditScaleConfig(o?.scaleConfig ?? { min: 1, max: 5, minLabel: "Low", maxLabel: "High" });
+                  setEditDescription(
+                    o?.description ?? property.description ?? "",
+                  );
+                  setEditSelectOptions(
+                    o?.selectOptions ?? [
+                      { value: "opt1", label: "Option 1" },
+                      { value: "other", label: "Other/Comments" },
+                    ],
+                  );
+                  setEditScaleConfig(
+                    o?.scaleConfig ?? {
+                      min: 1,
+                      max: 5,
+                      minLabel: "Low",
+                      maxLabel: "High",
+                    },
+                  );
                   setIsEditing(true);
                 }}
               >
@@ -250,9 +303,16 @@ export function TemplatePropertyRenderer({
           ) : (
             <>
               <div className="flex items-center justify-between">
-                <span className="text-sm font-medium text-default-600">Editing</span>
+                <span className="text-sm font-medium text-default-600">
+                  Editing
+                </span>
                 <div className="flex gap-1">
-                  <Button size="sm" variant="flat" color="primary" onPress={handleSaveEdit}>
+                  <Button
+                    color="primary"
+                    size="sm"
+                    variant="flat"
+                    onPress={handleSaveEdit}
+                  >
                     Save
                   </Button>
                   <Button
@@ -266,125 +326,153 @@ export function TemplatePropertyRenderer({
               </div>
               <div className="flex flex-col gap-2">
                 <Input
-            label="Label"
-            size="sm"
-            value={editLabel}
-            onValueChange={setEditLabel}
-            placeholder="Field label"
-          />
-          <Textarea
-            label="Description"
-            size="sm"
-            minRows={2}
-            value={editDescription}
-            onValueChange={setEditDescription}
-            placeholder="Field description (optional)"
-          />
-          <Select
-            label="Field type"
-            size="sm"
-            selectedKeys={
-              new Set([fieldOverrides[propertyPath]?.inputType ?? inputType])
-            }
-            onSelectionChange={handleFieldTypeChange}
-            placeholder="Select type"
-          >
-            {INPUT_TYPE_OPTIONS.map((opt) => (
-              <SelectItem key={opt.value}>{opt.label}</SelectItem>
-            ))}
-          </Select>
-          {inputType === "select" && (
-            <div className="space-y-2">
-              <span className="text-sm font-medium text-default-600">Select options (PDF-style)</span>
-              {editSelectOptions.map((opt, i) => (
-                <div key={i} className="flex gap-2">
-                  <Input
-                    size="sm"
-                    placeholder="Value"
-                    value={opt.value}
-                    onValueChange={(v) =>
-                      setEditSelectOptions((prev) => {
-                        const next = [...prev];
-                        next[i] = { ...next[i], value: v };
-                        return next;
-                      })
-                    }
-                  />
-                  <Input
-                    size="sm"
-                    placeholder="Label"
-                    value={opt.label}
-                    onValueChange={(v) =>
-                      setEditSelectOptions((prev) => {
-                        const next = [...prev];
-                        next[i] = { ...next[i], label: v };
-                        return next;
-                      })
-                    }
-                  />
-                  <Button
-                    size="sm"
-                    variant="flat"
-                    color="danger"
-                    onPress={() =>
-                      setEditSelectOptions((prev) => prev.filter((_, j) => j !== i))
-                    }
-                  >
-                    −
-                  </Button>
-                </div>
-              ))}
-              <Button
-                size="sm"
-                variant="flat"
-                onPress={() =>
-                  setEditSelectOptions((prev) => [...prev, { value: `opt${prev.length + 1}`, label: `Option ${prev.length + 1}` }])
-                }
-              >
-                + Add option
-              </Button>
-            </div>
-          )}
-          {inputType === "scale" && (
-            <div className="grid grid-cols-2 gap-2">
-              <Input
-                label="Min"
-                size="sm"
-                type="number"
-                value={String(editScaleConfig.min)}
-                onValueChange={(v) =>
-                  setEditScaleConfig((prev) => ({ ...prev, min: Number(v) || 1 }))
-                }
-              />
-              <Input
-                label="Max"
-                size="sm"
-                type="number"
-                value={String(editScaleConfig.max)}
-                onValueChange={(v) =>
-                  setEditScaleConfig((prev) => ({ ...prev, max: Number(v) || 5 }))
-                }
-              />
-              <Input
-                label="Start label (e.g. Difficult)"
-                size="sm"
-                placeholder="Optional"
-                value={editScaleConfig.minLabel ?? ""}
-                onValueChange={(v) =>
-                  setEditScaleConfig((prev) => ({ ...prev, minLabel: v || undefined }))
-                }
-              />
-              <Input
-                label="End label (e.g. Easy)"
-                size="sm"
-                placeholder="Optional"
-                value={editScaleConfig.maxLabel ?? ""}
-                onValueChange={(v) =>
-                  setEditScaleConfig((prev) => ({ ...prev, maxLabel: v || undefined }))
-                }
-              />
-            </div>
-          )}
+                  label="Label"
+                  placeholder="Field label"
+                  size="sm"
+                  value={editLabel}
+                  onValueChange={setEditLabel}
+                />
+                <Textarea
+                  label="Description"
+                  minRows={2}
+                  placeholder="Field description (optional)"
+                  size="sm"
+                  value={editDescription}
+                  onValueChange={setEditDescription}
+                />
+                <Select
+                  label="Field type"
+                  placeholder="Select type"
+                  selectedKeys={
+                    new Set([
+                      fieldOverrides[propertyPath]?.inputType ?? inputType,
+                    ])
+                  }
+                  size="sm"
+                  onSelectionChange={handleFieldTypeChange}
+                >
+                  {INPUT_TYPE_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value}>{opt.label}</SelectItem>
+                  ))}
+                </Select>
+                {inputType === "select" && (
+                  <div className="space-y-2">
+                    <span className="text-sm font-medium text-default-600">
+                      Select options (PDF-style)
+                    </span>
+                    {editSelectOptions.map((opt, i) => (
+                      <div key={i} className="flex gap-2">
+                        <Input
+                          placeholder="Value"
+                          size="sm"
+                          value={opt.value}
+                          onValueChange={(v) =>
+                            setEditSelectOptions((prev) => {
+                              const next = [...prev];
+
+                              next[i] = { ...next[i], value: v };
+
+                              return next;
+                            })
+                          }
+                        />
+                        <Input
+                          placeholder="Label"
+                          size="sm"
+                          value={opt.label}
+                          onValueChange={(v) =>
+                            setEditSelectOptions((prev) => {
+                              const next = [...prev];
+
+                              next[i] = { ...next[i], label: v };
+
+                              return next;
+                            })
+                          }
+                        />
+                        <Button
+                          color="danger"
+                          size="sm"
+                          variant="flat"
+                          onPress={() =>
+                            setEditSelectOptions((prev) =>
+                              prev.filter((_, j) => j !== i),
+                            )
+                          }
+                        >
+                          −
+                        </Button>
+                      </div>
+                    ))}
+                    <Button
+                      size="sm"
+                      variant="flat"
+                      onPress={() =>
+                        setEditSelectOptions((prev) => [
+                          ...prev,
+                          {
+                            value: `opt${prev.length + 1}`,
+                            label: `Option ${prev.length + 1}`,
+                          },
+                        ])
+                      }
+                    >
+                      + Add option
+                    </Button>
+                  </div>
+                )}
+                {inputType === "scale" && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <Input
+                      label="Min"
+                      size="sm"
+                      type="number"
+                      value={String(editScaleConfig.min)}
+                      onValueChange={(v) =>
+                        setEditScaleConfig((prev) => ({
+                          ...prev,
+                          min: Number(v) || 1,
+                        }))
+                      }
+                    />
+                    <Input
+                      label="Max"
+                      size="sm"
+                      type="number"
+                      value={String(editScaleConfig.max)}
+                      onValueChange={(v) =>
+                        setEditScaleConfig((prev) => ({
+                          ...prev,
+                          max: Number(v) || 5,
+                        }))
+                      }
+                    />
+                    <Input
+                      label="Start label (e.g. Difficult)"
+                      placeholder="Optional"
+                      size="sm"
+                      value={editScaleConfig.minLabel ?? ""}
+                      onValueChange={(v) =>
+                        setEditScaleConfig((prev) => ({
+                          ...prev,
+                          minLabel: v || undefined,
+                        }))
+                      }
+                    />
+                    <Input
+                      label="End label (e.g. Easy)"
+                      placeholder="Optional"
+                      size="sm"
+                      value={editScaleConfig.maxLabel ?? ""}
+                      onValueChange={(v) =>
+                        setEditScaleConfig((prev) => ({
+                          ...prev,
+                          maxLabel: v || undefined,
+                        }))
+                      }
+                    />
+                  </div>
+                )}
               </div>
             </>
           )}
@@ -434,28 +522,37 @@ export function TemplatePropertyRenderer({
       {fieldEditorUi}
       <div className="ml-3 border-l border-default-200/70 pl-4">
         {effectiveDescription && (
-          <p className="mb-2 text-xs text-default-500">{effectiveDescription}</p>
+          <p className="mb-2 text-xs text-default-500">
+            {effectiveDescription}
+          </p>
         )}
         <Accordion
           className="gap-1"
-          variant="shadow"
           itemClasses={{
             base: "rounded-lg border-none bg-transparent",
           }}
+          variant="shadow"
         >
           {[
-              ...Object.entries(property.subtemplate_properties!).map(
-                ([subPropId, subProp]) => (
+            ...Object.entries(property.subtemplate_properties!).map(
+              ([subPropId, subProp]) => (
                 <AccordionItem
                   key={subPropId}
-                  aria-label={(fieldOverrides[`${propertyPath}.${subPropId}`]?.label ?? subProp.label)}
+                  aria-label={
+                    fieldOverrides[`${propertyPath}.${subPropId}`]?.label ??
+                    subProp.label
+                  }
                   classNames={{
                     title: "text-default-800 font-medium",
-                    trigger: "py-3 px-4 data-[hover=true]:bg-primary/5 data-[open=true]:bg-default-50 rounded-xl min-h-0",
+                    trigger:
+                      "py-3 px-4 data-[hover=true]:bg-primary/5 data-[open=true]:bg-default-50 rounded-xl min-h-0",
                     content: "px-4 pb-4",
                   }}
                   subtitle={subProp.cardinality}
-                  title={fieldOverrides[`${propertyPath}.${subPropId}`]?.label ?? subProp.label}
+                  title={
+                    fieldOverrides[`${propertyPath}.${subPropId}`]?.label ??
+                    subProp.label
+                  }
                 >
                   <div className="pb-2">
                     <TemplatePropertyRenderer
@@ -464,18 +561,12 @@ export function TemplatePropertyRenderer({
                       editMode={editMode}
                       fieldOverrides={fieldOverrides}
                       getInputTypeForPath={getInputTypeForPath}
-                      nestedCustomBlocksRecord={nestedCustomBlocksRecord}
                       nestedCustomBlockIds={
-                        nestedCustomBlocksRecord[`${propertyPath}.${subPropId}`] ?? []
+                        nestedCustomBlocksRecord[
+                          `${propertyPath}.${subPropId}`
+                        ] ?? []
                       }
-                      onAddChildToSection={onAddChildToSection}
-                      onAddNestedBlock={onAddNestedBlock}
-                      onRemoveChildFromSection={onRemoveChildFromSection}
-                      onReorderSectionChildren={onReorderSectionChildren}
-                      onFieldOverride={onFieldOverride}
-                      onNestedCustomValueChange={onNestedCustomValueChange}
-                      onRemoveNestedBlock={onRemoveNestedBlock}
-                      onUpdateCustomBlock={onUpdateCustomBlock}
+                      nestedCustomBlocksRecord={nestedCustomBlocksRecord}
                       property={subProp}
                       propertyId={subPropId}
                       propertyPath={`${propertyPath}.${subPropId}`}
@@ -483,17 +574,34 @@ export function TemplatePropertyRenderer({
                         typeof controlledValue === "object" &&
                         controlledValue !== null &&
                         !Array.isArray(controlledValue)
-                          ? (controlledValue as Record<string, FormValue>)[subPropId]
+                          ? (controlledValue as Record<string, FormValue>)[
+                              subPropId
+                            ]
                           : undefined
                       }
                       values={values}
+                      onAddChildToSection={onAddChildToSection}
+                      onAddNestedBlock={onAddNestedBlock}
+                      onFieldOverride={onFieldOverride}
+                      onNestedCustomValueChange={onNestedCustomValueChange}
+                      onRemoveChildFromSection={onRemoveChildFromSection}
+                      onRemoveNestedBlock={onRemoveNestedBlock}
+                      onReorderSectionChildren={onReorderSectionChildren}
+                      onUpdateCustomBlock={onUpdateCustomBlock}
                       onValueChange={(v) => {
                         if (!controlledOnChange) return;
                         const hasSub =
                           property.subtemplate_properties &&
-                          Object.keys(property.subtemplate_properties).length > 0;
+                          Object.keys(property.subtemplate_properties).length >
+                            0;
                         const current = controlledValue;
-                        if (hasSub && typeof current === "object" && current !== null && !Array.isArray(current)) {
+
+                        if (
+                          hasSub &&
+                          typeof current === "object" &&
+                          current !== null &&
+                          !Array.isArray(current)
+                        ) {
                           controlledOnChange({
                             ...current,
                             [subPropId]: v,
@@ -505,8 +613,9 @@ export function TemplatePropertyRenderer({
                     />
                   </div>
                 </AccordionItem>
-              )),
-              ...nestedCustomBlockIds.map((blockId) => {
+              ),
+            ),
+            ...nestedCustomBlockIds.map((blockId) => {
               const block = customBlocks[blockId];
 
               if (!block) return null;
@@ -518,7 +627,8 @@ export function TemplatePropertyRenderer({
                     aria-label={block.heading ?? "Text block"}
                     classNames={{
                       title: "text-default-800 font-medium",
-                      trigger: "py-3 px-4 data-[hover=true]:bg-primary/5 data-[open=true]:bg-default-50 rounded-xl min-h-0",
+                      trigger:
+                        "py-3 px-4 data-[hover=true]:bg-primary/5 data-[open=true]:bg-default-50 rounded-xl min-h-0",
                       content: "px-4 pb-4",
                     }}
                     title={block.heading ?? "Text block"}
@@ -527,7 +637,9 @@ export function TemplatePropertyRenderer({
                       <TextBlock
                         block={block}
                         editMode={editMode}
-                        onRemove={() => onRemoveNestedBlock?.(propertyPath!, blockId)}
+                        onRemove={() =>
+                          onRemoveNestedBlock?.(propertyPath!, blockId)
+                        }
                         onUpdate={(b) => onUpdateCustomBlock?.(blockId, b)}
                       />
                     </div>
@@ -541,7 +653,8 @@ export function TemplatePropertyRenderer({
                     aria-label={block.label}
                     classNames={{
                       title: "text-default-800 font-medium",
-                      trigger: "py-3 px-4 data-[hover=true]:bg-primary/5 data-[open=true]:bg-default-50 rounded-xl min-h-0",
+                      trigger:
+                        "py-3 px-4 data-[hover=true]:bg-primary/5 data-[open=true]:bg-default-50 rounded-xl min-h-0",
                       content: "px-4 pb-4",
                     }}
                     title={block.label}
@@ -551,10 +664,19 @@ export function TemplatePropertyRenderer({
                         block={block}
                         editMode={editMode}
                         value={
-                          (values[`__custom_${blockId}`] as string | number | boolean | string[] | undefined) ?? ""
+                          (values[`__custom_${blockId}`] as
+                            | string
+                            | number
+                            | boolean
+                            | string[]
+                            | undefined) ?? ""
                         }
-                        onChange={(v) => onNestedCustomValueChange?.(blockId, v)}
-                        onRemove={() => onRemoveNestedBlock?.(propertyPath!, blockId)}
+                        onChange={(v) =>
+                          onNestedCustomValueChange?.(blockId, v)
+                        }
+                        onRemove={() =>
+                          onRemoveNestedBlock?.(propertyPath!, blockId)
+                        }
                         onUpdate={(b) => onUpdateCustomBlock?.(blockId, b)}
                       />
                     </div>
@@ -568,7 +690,8 @@ export function TemplatePropertyRenderer({
                     aria-label="HTML block"
                     classNames={{
                       title: "text-default-800 font-medium",
-                      trigger: "py-3 px-4 data-[hover=true]:bg-primary/5 data-[open=true]:bg-default-50 rounded-xl min-h-0",
+                      trigger:
+                        "py-3 px-4 data-[hover=true]:bg-primary/5 data-[open=true]:bg-default-50 rounded-xl min-h-0",
                       content: "px-4 pb-4",
                     }}
                     title="HTML block"
@@ -577,7 +700,9 @@ export function TemplatePropertyRenderer({
                       <HtmlBlock
                         block={block}
                         editMode={editMode}
-                        onRemove={() => onRemoveNestedBlock?.(propertyPath!, blockId)}
+                        onRemove={() =>
+                          onRemoveNestedBlock?.(propertyPath!, blockId)
+                        }
                         onUpdate={(b) => onUpdateCustomBlock?.(blockId, b)}
                       />
                     </div>
@@ -591,7 +716,8 @@ export function TemplatePropertyRenderer({
                     aria-label={block.title}
                     classNames={{
                       title: "text-default-800 font-medium",
-                      trigger: "py-3 px-4 data-[hover=true]:bg-primary/5 data-[open=true]:bg-default-50 rounded-xl min-h-0",
+                      trigger:
+                        "py-3 px-4 data-[hover=true]:bg-primary/5 data-[open=true]:bg-default-50 rounded-xl min-h-0",
                       content: "px-4 pb-4",
                     }}
                     title={block.title}
@@ -605,21 +731,33 @@ export function TemplatePropertyRenderer({
                         editMode={editMode}
                         getChildBlocks={(sectionId) =>
                           (
-                            (customBlocks[sectionId] as { childIds?: string[] })?.childIds ?? []
-                          ).map((cid) => customBlocks[cid]).filter(Boolean)
+                            (customBlocks[sectionId] as { childIds?: string[] })
+                              ?.childIds ?? []
+                          )
+                            .map((cid) => customBlocks[cid])
+                            .filter(Boolean)
                         }
                         getChildValue={(cid) =>
-                          (values[`__custom_${cid}`] as string | number | boolean | string[] | undefined) ?? ""
+                          (values[`__custom_${cid}`] as
+                            | string
+                            | number
+                            | boolean
+                            | string[]
+                            | undefined) ?? ""
                         }
                         onAddChild={onAddChildToSection}
                         onChildValueChange={(cid, v) =>
                           onNestedCustomValueChange?.(cid, v)
                         }
-                        onRemove={() => onRemoveNestedBlock?.(propertyPath!, blockId)}
+                        onRemove={() =>
+                          onRemoveNestedBlock?.(propertyPath!, blockId)
+                        }
                         onRemoveChild={onRemoveChildFromSection}
                         onReorderChildren={onReorderSectionChildren}
                         onUpdate={(b) => onUpdateCustomBlock?.(blockId, b)}
-                        onUpdateChild={(cid, b) => onUpdateCustomBlock?.(cid, b)}
+                        onUpdateChild={(cid, b) =>
+                          onUpdateCustomBlock?.(cid, b)
+                        }
                       />
                     </div>
                   </AccordionItem>
@@ -628,7 +766,7 @@ export function TemplatePropertyRenderer({
 
               return null;
             }),
-            ]}
+          ]}
         </Accordion>
         {editMode && onAddNestedBlock && (
           <Dropdown className="mt-2">

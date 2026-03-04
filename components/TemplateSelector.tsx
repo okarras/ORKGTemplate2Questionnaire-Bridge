@@ -85,11 +85,6 @@ export function TemplateSelector() {
     router.push(`/questionnaire/${templateId}`);
   };
 
-  const handleStartQuestionnaire = (id: string) => {
-    setLoadingQId(id);
-    router.push(`/questionnaire/${id}`);
-  };
-
   return (
     <div className="flex flex-col gap-8 w-full max-w-4xl mx-auto">
       <div className="flex flex-col gap-6">
@@ -237,11 +232,10 @@ export function TemplateSelector() {
                       as={Link}
                       color="primary"
                       href={`/questionnaire/${t.id}`}
-                      isDisabled={loadingQId !== null && loadingQId !== t.id}
                       isLoading={loadingQId === t.id}
                       size="sm"
                       variant="flat"
-                      onPress={() => handleStartQuestionnaire(t.id)}
+                      onPress={() => setLoadingQId(t.id)}
                     >
                       {loadingQId === t.id
                         ? "Loading..."

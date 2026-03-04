@@ -118,27 +118,19 @@ export function ResourceAutoselect({
             ? "Search and select one or more..."
             : "Search and select...")
         }
-        selectedKey={
-          multiselect
-            ? undefined
-            : typeof value === "string" && value
-              ? value
-              : undefined
-        }
-        selectedKeys={
-          multiselect
-            ? new Set(Array.isArray(value) ? value : [])
-            : undefined
-        }
-        selectionMode={multiselect ? "multiple" : "single"}
-        variant="bordered"
-        onSelectionChange={(keys) => {
-          if (multiselect) {
-            onChange(Array.from(keys) as string[]);
-          } else {
-            const selected = Array.from(keys)[0];
+        selectedKey={(() => {
+          const current = Array.isArray(value) ? value[0] : value;
 
-            onChange(selected ? String(selected) : "");
+          return typeof current === "string" && current ? current : undefined;
+        })()}
+        variant="bordered"
+        onSelectionChange={(key) => {
+          const selected = key ? String(key) : "";
+
+          if (multiselect) {
+            onChange(selected ? [selected] : []);
+          } else {
+            onChange(selected);
           }
         }}
       >
@@ -149,7 +141,6 @@ export function ResourceAutoselect({
           return (
             <AutocompleteItem
               key={r.id}
-              textValue={displayLabel}
               endContent={
                 orkgUrl ? (
                   <Link
@@ -179,6 +170,7 @@ export function ResourceAutoselect({
                   </Link>
                 ) : undefined
               }
+              textValue={displayLabel}
             >
               {displayLabel}
             </AutocompleteItem>

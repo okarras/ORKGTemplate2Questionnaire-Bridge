@@ -9,6 +9,7 @@ import type {
   TextBlockData,
 } from "@/types/template";
 import type { ScaleConfig, SelectOption } from "./QuestionnaireForm";
+import type { DragEndEvent } from "@dnd-kit/core";
 
 import DOMPurify from "dompurify";
 import { useState, useCallback } from "react";
@@ -23,8 +24,6 @@ import {
 import { Input } from "@heroui/input";
 import { Textarea } from "@heroui/input";
 import { Select, SelectItem } from "@heroui/select";
-import { Divider } from "@heroui/divider";
-
 import {
   DndContext,
   KeyboardSensor,
@@ -33,7 +32,6 @@ import {
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
-import type { DragEndEvent } from "@dnd-kit/core";
 import {
   SortableContext,
   arrayMove,
@@ -80,8 +78,14 @@ function SortableSectionChild({
   onUpdateChild?: (childId: string, data: CustomBlock) => void;
   renderChild: (child: CustomBlock) => React.ReactNode;
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({ id });
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -89,7 +93,11 @@ function SortableSectionChild({
   };
 
   return (
-    <div ref={setNodeRef} style={style} className={isDragging ? "opacity-80" : ""}>
+    <div
+      ref={setNodeRef}
+      className={isDragging ? "opacity-80" : ""}
+      style={style}
+    >
       <div className="flex items-start gap-2">
         {editMode && (
           <div
@@ -98,13 +106,13 @@ function SortableSectionChild({
             className="mt-1 cursor-grab active:cursor-grabbing touch-none rounded p-1 text-default-400 hover:bg-default-100 hover:text-default-600"
           >
             <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
               fill="none"
+              height="14"
               stroke="currentColor"
               strokeWidth="2"
+              viewBox="0 0 24 24"
+              width="14"
+              xmlns="http://www.w3.org/2000/svg"
             >
               <circle cx="9" cy="5" r="1" />
               <circle cx="9" cy="12" r="1" />
@@ -225,7 +233,9 @@ export function TextBlock({
           </h3>
         )}
         <p className="whitespace-pre-wrap text-sm leading-relaxed text-default-700">
-          {block.body || <span className="italic text-default-400">No content yet</span>}
+          {block.body || (
+            <span className="italic text-default-400">No content yet</span>
+          )}
         </p>
       </div>
       {editMode && (
@@ -241,12 +251,7 @@ export function TextBlock({
           >
             Edit
           </Button>
-          <Button
-            color="danger"
-            size="sm"
-            variant="flat"
-            onPress={onRemove}
-          >
+          <Button color="danger" size="sm" variant="flat" onPress={onRemove}>
             Remove
           </Button>
         </div>
@@ -375,59 +380,59 @@ export function SectionBlock({
         const childIds = children.map((c) => c.id);
 
         const renderChild = (child: CustomBlock) => {
-            if (child.type === "text") {
-              return (
-                <TextBlock
-                  key={child.id}
-                  block={child}
-                  editMode={editMode}
-                  onRemove={() => onRemoveChild?.(block.id, child.id)}
-                  onUpdate={(b) => onUpdateChild?.(child.id, b)}
-                />
-              );
-            }
-            if (child.type === "section") {
-              return (
-                <SectionBlock
-                  key={child.id}
-                  block={child}
-                  editMode={editMode}
-                  getChildBlocks={getChildBlocks}
-                  getChildValue={getChildValue}
-                  onAddChild={onAddChild}
-                  onChildValueChange={onChildValueChange}
-                  onRemove={() => onRemoveChild?.(block.id, child.id)}
-                  onRemoveChild={onRemoveChild}
-                  onReorderChildren={onReorderChildren}
-                  onUpdate={(b) => onUpdateChild?.(child.id, b)}
-                  onUpdateChild={onUpdateChild}
-                />
-              );
-            }
-            if (child.type === "html") {
-              return (
-                <HtmlBlock
-                  key={child.id}
-                  block={child}
-                  editMode={editMode}
-                  onRemove={() => onRemoveChild?.(block.id, child.id)}
-                  onUpdate={(b) => onUpdateChild?.(child.id, b)}
-                />
-              );
-            }
-            if (child.type === "customField") {
-              return (
-                <CustomFieldBlock
-                  key={child.id}
-                  block={child}
-                  editMode={editMode}
-                  value={(getChildValue?.(child.id) as FieldValue) ?? ""}
-                  onChange={(v) => onChildValueChange?.(child.id, v)}
-                  onRemove={() => onRemoveChild?.(block.id, child.id)}
-                  onUpdate={(b) => onUpdateChild?.(child.id, b)}
-                />
-              );
-            }
+          if (child.type === "text") {
+            return (
+              <TextBlock
+                key={child.id}
+                block={child}
+                editMode={editMode}
+                onRemove={() => onRemoveChild?.(block.id, child.id)}
+                onUpdate={(b) => onUpdateChild?.(child.id, b)}
+              />
+            );
+          }
+          if (child.type === "section") {
+            return (
+              <SectionBlock
+                key={child.id}
+                block={child}
+                editMode={editMode}
+                getChildBlocks={getChildBlocks}
+                getChildValue={getChildValue}
+                onAddChild={onAddChild}
+                onChildValueChange={onChildValueChange}
+                onRemove={() => onRemoveChild?.(block.id, child.id)}
+                onRemoveChild={onRemoveChild}
+                onReorderChildren={onReorderChildren}
+                onUpdate={(b) => onUpdateChild?.(child.id, b)}
+                onUpdateChild={onUpdateChild}
+              />
+            );
+          }
+          if (child.type === "html") {
+            return (
+              <HtmlBlock
+                key={child.id}
+                block={child}
+                editMode={editMode}
+                onRemove={() => onRemoveChild?.(block.id, child.id)}
+                onUpdate={(b) => onUpdateChild?.(child.id, b)}
+              />
+            );
+          }
+          if (child.type === "customField") {
+            return (
+              <CustomFieldBlock
+                key={child.id}
+                block={child}
+                editMode={editMode}
+                value={(getChildValue?.(child.id) as FieldValue) ?? ""}
+                onChange={(v) => onChildValueChange?.(child.id, v)}
+                onRemove={() => onRemoveChild?.(block.id, child.id)}
+                onUpdate={(b) => onUpdateChild?.(child.id, b)}
+              />
+            );
+          }
 
           return null;
         };
@@ -449,8 +454,8 @@ export function SectionBlock({
           editMode && onReorderChildren ? (
             <DndContext
               collisionDetection={closestCenter}
-              onDragEnd={handleChildDragEnd}
               sensors={sensors}
+              onDragEnd={handleChildDragEnd}
             >
               <SortableContext
                 items={childIds}
@@ -459,18 +464,18 @@ export function SectionBlock({
                 {children.map((child) => (
                   <SortableSectionChild
                     key={child.id}
-                    id={child.id}
-                    child={child}
                     block={block}
+                    child={child}
                     editMode={editMode}
                     getChildBlocks={getChildBlocks}
                     getChildValue={getChildValue}
+                    id={child.id}
+                    renderChild={renderChild}
                     onAddChild={onAddChild}
                     onChildValueChange={onChildValueChange}
                     onRemoveChild={onRemoveChild}
                     onReorderChildren={onReorderChildren}
                     onUpdateChild={onUpdateChild}
-                    renderChild={renderChild}
                   />
                 ))}
               </SortableContext>
@@ -538,12 +543,7 @@ export function SectionBlock({
           >
             Edit
           </Button>
-          <Button
-            color="danger"
-            size="sm"
-            variant="flat"
-            onPress={onRemove}
-          >
+          <Button color="danger" size="sm" variant="flat" onPress={onRemove}>
             Remove
           </Button>
         </div>
@@ -685,12 +685,7 @@ export function HtmlBlock({
           >
             Edit
           </Button>
-          <Button
-            color="danger"
-            size="sm"
-            variant="flat"
-            onPress={onRemove}
-          >
+          <Button color="danger" size="sm" variant="flat" onPress={onRemove}>
             Remove
           </Button>
         </div>
@@ -954,12 +949,7 @@ export function CustomFieldBlock({
           >
             Edit
           </Button>
-          <Button
-            color="danger"
-            size="sm"
-            variant="flat"
-            onPress={onRemove}
-          >
+          <Button color="danger" size="sm" variant="flat" onPress={onRemove}>
             Remove
           </Button>
         </div>

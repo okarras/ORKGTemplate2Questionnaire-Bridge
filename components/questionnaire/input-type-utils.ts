@@ -16,7 +16,7 @@ const FALLBACK_INPUT_TYPES: InputType[] = [
  * - Blank node / Unknown → text (fallback)
  */
 export function getInputTypeFromValueType(
-  valueType?: OrkgValueType
+  valueType?: OrkgValueType,
 ): InputType {
   switch (valueType) {
     case "IRI":
@@ -36,11 +36,14 @@ export function getInputTypeFromValueType(
  */
 export function getInputTypeForProperty(propertyId: string): InputType {
   let hash = 0;
+
   for (let i = 0; i < propertyId.length; i++) {
     const char = propertyId.charCodeAt(i);
+
     hash = (hash << 5) - hash + char;
     hash = hash & hash;
   }
   const index = Math.abs(hash) % FALLBACK_INPUT_TYPES.length;
+
   return FALLBACK_INPUT_TYPES[index];
 }

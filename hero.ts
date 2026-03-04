@@ -1,4 +1,5 @@
 import { heroui } from "@heroui/theme";
+
 import { empireThemeLight, empireThemeDark } from "./config/empire-theme";
 
 export default heroui({
