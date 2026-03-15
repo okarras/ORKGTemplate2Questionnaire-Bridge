@@ -78,8 +78,15 @@ export function TemplateSelector() {
     const raw = directId.trim();
 
     if (!raw) return;
-    const match = raw.match(/R\d+/);
-    const templateId = match ? match[0] : raw;
+    const match = raw.match(/R\d+/i);
+    let templateId = raw;
+
+    if (match) {
+      templateId = match[0].toUpperCase();
+    } else if (raw.length > 50) {
+      setError("Please enter a valid Template ID (e.g., R1544125)");
+      return;
+    }
 
     setLoadingQId(templateId);
     router.push(`/questionnaire/${templateId}`);

@@ -1,4 +1,5 @@
 import "@/styles/globals.css";
+import "scidquest/dist/contribute-standalone.css";
 import { Metadata, Viewport } from "next";
 
 import { Providers } from "./providers";

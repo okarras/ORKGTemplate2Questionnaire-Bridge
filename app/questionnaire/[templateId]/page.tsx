@@ -9,7 +9,8 @@ import {
   generateTemplateMapping,
 } from "@/lib/orkg-templates";
 import { enrichTemplateMapping } from "@/lib/preprocessing/enrich-template-mapping";
-import { QuestionnaireForm } from "@/components/questionnaire";
+import { orkgToScidQuestTemplate } from "@/lib/orkg-to-scidquest-adapter";
+import { QuestionnaireViewLoader } from "@/components/questionnaire/QuestionnaireViewLoader";
 
 interface QuestionnairePageProps {
   params: Promise<{ templateId: string }>;
@@ -61,12 +62,12 @@ export default async function QuestionnairePage({
     );
   }
 
+  const scidQuestTemplate = orkgToScidQuestTemplate(mapping, templateId, label);
+
   return (
-    <QuestionnaireForm
-      backHref="/"
+    <QuestionnaireViewLoader
       label={label}
-      mapping={mapping}
-      templateId={templateId}
+      templateSpec={scidQuestTemplate}
     />
   );
 }
