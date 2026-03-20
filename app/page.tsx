@@ -3,7 +3,7 @@ import { SiteLogo } from "@/components/site-logo";
 
 export default function Home() {
   return (
-    <section className="flex flex-col gap-8 py-8 md:py-10">
+    <section className="container mx-auto max-w-7xl px-6 pt-8 flex flex-col gap-8 py-8 md:py-10">
       <div className="flex flex-col gap-4 text-center">
         <SiteLogo className="mx-auto" size={120} />
         <h1 className="text-4xl font-bold tracking-tight text-primary md:text-5xl">

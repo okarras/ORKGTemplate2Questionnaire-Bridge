@@ -188,6 +188,11 @@ interface QuestionnaireFormProps {
   label: string;
   mapping: EnrichedTemplateMapping;
   backHref?: string;
+  /**
+   * When true, starts in "Edit mode" (draggable blocks / block editing).
+   * When false, starts in "Fill mode" (just the questionnaire fields).
+   */
+  initialEditMode?: boolean;
 }
 
 export function QuestionnaireForm({
@@ -195,12 +200,13 @@ export function QuestionnaireForm({
   label,
   mapping,
   backHref = "/",
+  initialEditMode = true,
 }: QuestionnaireFormProps) {
   const [values, setValues] = useState<Record<string, FormValue>>(() =>
     buildInitialValues(mapping),
   );
   const [isExportingPdf, setIsExportingPdf] = useState(false);
-  const [editMode, setEditMode] = useState(true);
+  const [editMode, setEditMode] = useState(initialEditMode);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [structure, setStructure, { undo, redo, canUndo, canRedo }] =
@@ -1698,7 +1704,7 @@ export function QuestionnaireForm({
   );
 
   return (
-    <section className="questionnaire-form flex max-w-4xl flex-col gap-10 py-10">
+    <section className="questionnaire-form flex w-full max-w-none flex-col gap-10 py-10">
       {/* Header card */}
       <div className="rounded-2xl border border-default-200 bg-default-50/50 p-6 shadow-sm">
         <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">

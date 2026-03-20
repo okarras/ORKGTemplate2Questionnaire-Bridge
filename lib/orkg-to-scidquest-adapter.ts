@@ -8,6 +8,11 @@ import type {
   EnrichedSubtemplateProperty,
 } from "@/types/template";
 
+import {
+  ORKG_SPARQL_ENDPOINT,
+  buildResourcesQuery,
+} from "./sparql/orkg-queries";
+
 /** ScidQuest QuestionnaireTemplate-compatible types */
 export interface ScidQuestQuestion {
   id: string;
@@ -53,6 +58,64 @@ function isOneToMany(cardinality?: string): boolean {
   );
 }
 
+async function fetchOrkgResourceOptions(
+  predicateId: string,
+  classId?: string,
+  cache?: Map<string, string[]>,
+): Promise<string[]> {
+  const cacheKey = `${predicateId}|${classId ?? ""}`;
+
+  if (cache?.has(cacheKey)) return cache.get(cacheKey)!;
+
+  const query = buildResourcesQuery(predicateId, {
+    classId: classId && classId.startsWith("C") ? classId : undefined,
+    limit: 500,
+  });
+
+  if (!query) {
+    cache?.set(cacheKey, []);
+
+    return [];
+  }
+
+  try {
+    const response = await fetch(ORKG_SPARQL_ENDPOINT, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        Accept: "application/sparql-results+json",
+      },
+      body: new URLSearchParams({ query }).toString(),
+    });
+
+    if (!response.ok) {
+      cache?.set(cacheKey, []);
+
+      return [];
+    }
+
+    const result: any = await response.json();
+    const bindings = result?.results?.bindings ?? [];
+
+    const labels: string[] = bindings
+      .map((b: any) => b?.oLabel?.value ?? b?.o?.value)
+      .filter(Boolean)
+      .map((v: any) => String(v));
+
+    const unique: string[] = Array.from(new Set(labels)).sort((a, b) =>
+      a.localeCompare(b),
+    );
+
+    cache?.set(cacheKey, unique);
+
+    return unique;
+  } catch {
+    cache?.set(cacheKey, []);
+
+    return [];
+  }
+}
+
 function mapValueTypeToQuestionType(prop: EnrichedSubtemplateProperty): string {
   const valueType = prop.valueType;
   const oneToMany = isOneToMany(prop.cardinality);
@@ -64,28 +127,37 @@ function mapValueTypeToQuestionType(prop: EnrichedSubtemplateProperty): string {
     return oneToMany ? "repeat_group" : "group";
   }
 
-  if (oneToMany) {
-    return "repeat_text";
-  }
-
+  // Leaf fields: decide how ScidQuest should render them.
+  // ScidQuest uses these strings in its QuestionRenderer.
   switch (valueType) {
     case "IRI":
-      return "text"; // ScidQuest has no ORKG resource autocomplete; use text
+      // ORKG resources: render as dropdown(s).
+      return oneToMany ? "multi_select" : "single_select";
     case "Literal":
+      return oneToMany ? "repeat_text" : "text";
     case "Blank node":
     case "Unknown":
     default:
-      return "text";
+      // Fallback: treat as plain text (and allow repeating if needed).
+      return oneToMany ? "repeat_text" : "text";
   }
 }
 
-function convertPropertyToQuestion(
+async function convertPropertyToQuestion(
   propId: string,
   prop: EnrichedSubtemplateProperty,
-): ScidQuestQuestion {
+  optionsCache: Map<string, string[]>,
+): Promise<ScidQuestQuestion> {
   const questionType = mapValueTypeToQuestionType(prop);
   const oneToMany = isOneToMany(prop.cardinality);
   const nested = prop.subtemplate_properties;
+
+  const choiceType: ScidQuestQuestion["choice_type"] =
+    questionType === "multi_select"
+      ? "multiple"
+      : questionType === "single_select"
+        ? "single"
+        : "no";
 
   const baseQuestion: ScidQuestQuestion = {
     id: propId,
@@ -93,7 +165,8 @@ function convertPropertyToQuestion(
     title: prop.label || propId,
     type: questionType,
     required: oneToMany ? true : false,
-    choice_type: "no",
+    choice_type: choiceType,
+    // Populate options later (or extend the converter to fetch them from ORKG).
     options: [],
     evidence_fields: ["pages", "quote"],
     desc: prop.description,
@@ -107,7 +180,9 @@ function convertPropertyToQuestion(
     const subquestions: ScidQuestQuestion[] = [];
 
     for (const [subId, subProp] of Object.entries(nested)) {
-      subquestions.push(convertPropertyToQuestion(subId, subProp));
+      subquestions.push(
+        await convertPropertyToQuestion(subId, subProp, optionsCache),
+      );
     }
     baseQuestion.subquestions = subquestions;
   }
@@ -116,10 +191,20 @@ function convertPropertyToQuestion(
     const itemFields: ScidQuestQuestion[] = [];
 
     for (const [subId, subProp] of Object.entries(nested)) {
-      itemFields.push(convertPropertyToQuestion(subId, subProp));
+      itemFields.push(
+        await convertPropertyToQuestion(subId, subProp, optionsCache),
+      );
     }
     baseQuestion.item_fields = itemFields;
     baseQuestion.evidence_per_item = true;
+  }
+
+  if (questionType === "single_select" || questionType === "multi_select") {
+    baseQuestion.options = await fetchOrkgResourceOptions(
+      propId,
+      prop.class_id,
+      optionsCache,
+    );
   }
 
   return baseQuestion;
@@ -130,13 +215,14 @@ function convertPropertyToQuestion(
  * Top-level properties with nested subtemplate_properties become sections.
  * Leaf properties are grouped into a "Main" section.
  */
-export function orkgToScidQuestTemplate(
+export async function orkgToScidQuestTemplate(
   mapping: EnrichedTemplateMapping,
   templateId: string,
   templateLabel: string,
-): ScidQuestQuestionnaireTemplate {
+): Promise<ScidQuestQuestionnaireTemplate> {
   const sections: ScidQuestSection[] = [];
   const mainQuestions: ScidQuestQuestion[] = [];
+  const optionsCache = new Map<string, string[]>();
 
   for (const [propId, prop] of Object.entries(mapping)) {
     const hasNested =
@@ -145,7 +231,11 @@ export function orkgToScidQuestTemplate(
 
     if (hasNested) {
       const sectionQuestions: ScidQuestQuestion[] = [];
-      const question = convertPropertyToQuestion(propId, prop);
+      const question = await convertPropertyToQuestion(
+        propId,
+        prop,
+        optionsCache,
+      );
 
       sectionQuestions.push(question);
       sections.push({
@@ -154,7 +244,9 @@ export function orkgToScidQuestTemplate(
         questions: sectionQuestions,
       });
     } else {
-      mainQuestions.push(convertPropertyToQuestion(propId, prop));
+      mainQuestions.push(
+        await convertPropertyToQuestion(propId, prop, optionsCache),
+      );
     }
   }
 

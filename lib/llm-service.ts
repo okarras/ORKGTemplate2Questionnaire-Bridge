@@ -45,6 +45,7 @@ export function createApiLLMService(): LLMService {
           typeof err?.error === "string"
             ? err.error
             : `API error: ${res.status}`;
+
         throw new Error(message);
       }
 

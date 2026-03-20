@@ -1,6 +1,7 @@
 "use client";
 
 import type { ScidQuestQuestionnaireTemplate } from "@/lib/orkg-to-scidquest-adapter";
+
 import dynamic from "next/dynamic";
 
 const QuestionnaireScidQuestView = dynamic(

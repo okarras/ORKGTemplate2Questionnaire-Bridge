@@ -2,8 +2,7 @@
 
 import type { TemplateListItem } from "@/lib/orkg-templates";
 
-import { useState, useEffect, useCallback } from "react";
-import Link from "next/link";
+import { useState, useEffect, useCallback, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardBody } from "@heroui/card";
 import { Input } from "@heroui/input";
@@ -35,6 +34,7 @@ export function TemplateSelector() {
   const [total, setTotal] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [directId, setDirectId] = useState("");
+  const [isPending, startTransition] = useTransition();
   const [loadingQId, setLoadingQId] = useState<string | null>(null);
   const debouncedQuery = useDebounce(query, 300);
 
@@ -85,11 +85,21 @@ export function TemplateSelector() {
       templateId = match[0].toUpperCase();
     } else if (raw.length > 50) {
       setError("Please enter a valid Template ID (e.g., R1544125)");
+
       return;
     }
 
     setLoadingQId(templateId);
-    router.push(`/questionnaire/${templateId}`);
+    startTransition(() => {
+      router.push(`/questionnaire/${templateId}`);
+    });
+  };
+
+  const handleOpenTemplate = (id: string) => {
+    setLoadingQId(id);
+    startTransition(() => {
+      router.push(`/questionnaire/${id}`);
+    });
   };
 
   return (
@@ -149,9 +159,14 @@ export function TemplateSelector() {
           <Button
             className="font-medium"
             color="primary"
-            isLoading={loadingQId === directId.trim()}
+            isLoading={isPending && !!loadingQId && directId.toLowerCase().includes(loadingQId.toLowerCase())}
             type="submit"
             variant="flat"
+            onMouseEnter={() => {
+              const raw = directId.trim();
+              const match = raw.match(/R\d+/i);
+              if (match) router.prefetch(`/questionnaire/${match[0].toUpperCase()}`);
+            }}
           >
             Open questionnaire
           </Button>
@@ -236,17 +251,14 @@ export function TemplateSelector() {
                   )}
                   <div className="mt-2 flex gap-2">
                     <Button
-                      as={Link}
                       color="primary"
-                      href={`/questionnaire/${t.id}`}
-                      isLoading={loadingQId === t.id}
+                      isLoading={isPending && loadingQId === t.id}
                       size="sm"
                       variant="flat"
-                      onPress={() => setLoadingQId(t.id)}
+                      onMouseEnter={() => router.prefetch(`/questionnaire/${t.id}`)}
+                      onPress={() => handleOpenTemplate(t.id)}
                     >
-                      {loadingQId === t.id
-                        ? "Loading..."
-                        : "Start questionnaire"}
+                      Start questionnaire
                     </Button>
                     {getOrkgResourceLink(t.id) && (
                       <Button
