@@ -27,12 +27,14 @@ export default async function QuestionnairePage({
 
   let mapping: EnrichedTemplateMapping;
   let label: string;
+  let targetClassId: string | undefined;
 
   try {
     const flow = await loadTemplateFlowByID(templateId);
     const rawMapping = generateTemplateMapping(flow.allTemplates, flow.main.id);
 
     label = flow.main.label;
+    targetClassId = flow.main.target_class?.id;
     try {
       mapping = await enrichTemplateMapping(rawMapping);
     } catch {
@@ -73,6 +75,7 @@ export default async function QuestionnairePage({
       label={label}
       mapping={mapping}
       scidQuestTemplate={scidQuestTemplate}
+      targetClassId={targetClassId}
       templateId={templateId}
     />
   );

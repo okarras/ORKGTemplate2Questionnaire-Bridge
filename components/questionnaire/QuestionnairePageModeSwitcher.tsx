@@ -13,11 +13,13 @@ type Mode = "form" | "scidquest";
 
 export function QuestionnairePageModeSwitcher({
   templateId,
+  targetClassId,
   label,
   mapping,
   scidQuestTemplate,
 }: {
   templateId: string;
+  targetClassId?: string;
   label: string;
   mapping: EnrichedTemplateMapping;
   scidQuestTemplate: ScidQuestQuestionnaireTemplate;
@@ -53,6 +55,7 @@ export function QuestionnairePageModeSwitcher({
           initialEditMode={false}
           label={label}
           mapping={mapping}
+          targetClassId={targetClassId}
           templateId={templateId}
         />
       ) : (

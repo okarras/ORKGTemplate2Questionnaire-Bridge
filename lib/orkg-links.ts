@@ -43,3 +43,8 @@ export function getOrkgResourceLinkFromIri(iri: string): string | null {
 
   return match ? `https://orkg.org/resource/${match[1]}` : null;
 }
+
+/** Link to a resource on the ORKG sandbox */
+export function getSandboxResourceLink(resourceId: string): string {
+  return `https://sandbox.orkg.org/resource/${resourceId}`;
+}

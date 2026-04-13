@@ -41,6 +41,7 @@ import {
   getInputTypeForProperty,
   getInputTypeFromValueType,
 } from "./input-type-utils";
+import { OrkgSubmitModal } from "./OrkgSubmitModal";
 
 import { useUndoableState } from "@/hooks/useUndoableState";
 import { getOrkgPropertyLink, getOrkgClassLink } from "@/lib/orkg-links";
@@ -185,6 +186,8 @@ export type FieldOverrides = Record<
 
 interface QuestionnaireFormProps {
   templateId: string;
+  /** ORKG target class ID (e.g. "C12345") used when creating the resource instance */
+  targetClassId?: string;
   label: string;
   mapping: EnrichedTemplateMapping;
   backHref?: string;
@@ -197,6 +200,7 @@ interface QuestionnaireFormProps {
 
 export function QuestionnaireForm({
   templateId,
+  targetClassId,
   label,
   mapping,
   backHref = "/",
@@ -207,6 +211,7 @@ export function QuestionnaireForm({
   );
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [editMode, setEditMode] = useState(initialEditMode);
+  const [showSubmitModal, setShowSubmitModal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [structure, setStructure, { undo, redo, canUndo, canRedo }] =
@@ -1704,7 +1709,7 @@ export function QuestionnaireForm({
   );
 
   return (
-    <section className="questionnaire-form flex w-full max-w-none flex-col gap-10 py-10">
+    <section className="questionnaire-form flex w-full max-w-none flex-col gap-10 py-10 p-10">
       {/* Header card */}
       <div className="rounded-2xl border border-default-200 bg-default-50/50 p-6 shadow-sm">
         <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
@@ -1816,6 +1821,16 @@ export function QuestionnaireForm({
               Export PDF
             </Button>
           </div>
+          <div className="h-4 w-px bg-default-300" />
+          <Button
+            id="orkg-submit-btn"
+            color="success"
+            size="sm"
+            variant="flat"
+            onPress={() => setShowSubmitModal(true)}
+          >
+            🚀 Submit to ORKG
+          </Button>
         </div>
       </div>
 
@@ -2004,6 +2019,17 @@ export function QuestionnaireForm({
           </SortableContext>
         </DndContext>
       </div>
+
+      {/* ORKG Sandbox submission modal */}
+      <OrkgSubmitModal
+        isOpen={showSubmitModal}
+        mapping={mapping}
+        targetClassId={targetClassId}
+        templateId={templateId}
+        templateLabel={label}
+        values={values}
+        onClose={() => setShowSubmitModal(false)}
+      />
     </section>
   );
 }
