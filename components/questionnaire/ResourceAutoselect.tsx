@@ -11,6 +11,7 @@ import {
   getOrkgResourceLinkFromIri,
   getOrkgCreateResourceLink,
 } from "@/lib/orkg-links";
+import { ResourceLabelCache } from "@/lib/resource-label-cache";
 
 interface OrkgResourceOption {
   id: string;
@@ -67,7 +68,17 @@ export function ResourceAutoselect({
     fetch(`/api/orkg/resources?${params.toString()}`)
       .then((res) => res.json())
       .then((data: { resources?: OrkgResourceOption[] }) => {
-        setResources(data.resources ?? []);
+        const resList = data.resources ?? [];
+        resList.forEach((r) => {
+          ResourceLabelCache.set(r.id, r.label);
+          ResourceLabelCache.set(r.label, r.id);
+          const shortId = r.id.split("/").pop();
+          if (shortId) {
+            ResourceLabelCache.set(shortId, r.label);
+            ResourceLabelCache.set(r.label, shortId);
+          }
+        });
+        setResources(resList);
       })
       .catch(() => setResources([]))
       .finally(() => setLoading(false));
@@ -120,8 +131,16 @@ export function ResourceAutoselect({
         }
         selectedKey={(() => {
           const current = Array.isArray(value) ? value[0] : value;
+          if (typeof current !== "string" || !current) return undefined;
 
-          return typeof current === "string" && current ? current : undefined;
+          if (resources.some((r) => r.id === current)) return current;
+          const match = resources.find(
+            (r) =>
+              r.id.split("/").pop() === current ||
+              r.label === current ||
+              r.id.split("/").pop() === current.split("/").pop()
+          );
+          return match ? match.id : current;
         })()}
         variant="bordered"
         onSelectionChange={(key) => {

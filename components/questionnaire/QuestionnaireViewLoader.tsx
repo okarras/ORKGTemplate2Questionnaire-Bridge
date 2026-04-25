@@ -20,13 +20,22 @@ const QuestionnaireScidQuestView = dynamic(
 interface QuestionnaireViewLoaderProps {
   label: string;
   templateSpec: ScidQuestQuestionnaireTemplate;
+  initialAnswers?: Record<string, unknown>;
+  onAnswersChange?: (answers: Record<string, unknown>) => void;
 }
 
 export function QuestionnaireViewLoader({
   label,
   templateSpec,
+  initialAnswers,
+  onAnswersChange,
 }: QuestionnaireViewLoaderProps) {
   return (
-    <QuestionnaireScidQuestView label={label} templateSpec={templateSpec} />
+    <QuestionnaireScidQuestView
+      initialAnswers={initialAnswers}
+      label={label}
+      templateSpec={templateSpec}
+      onAnswersChange={onAnswersChange}
+    />
   );
 }

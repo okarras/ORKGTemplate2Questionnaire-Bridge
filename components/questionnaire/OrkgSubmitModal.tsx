@@ -23,7 +23,13 @@ interface OrkgSubmitModalProps {
 type SubmitState =
   | { status: "idle" }
   | { status: "loading"; step: string }
-  | { status: "success"; resourceId: string; sandboxUrl: string; statementsCreated: number; errors: string[] }
+  | {
+      status: "success";
+      resourceId: string;
+      sandboxUrl: string;
+      statementsCreated: number;
+      errors: string[];
+    }
   | { status: "error"; message: string };
 
 export function OrkgSubmitModal({
@@ -41,13 +47,16 @@ export function OrkgSubmitModal({
   );
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [submitState, setSubmitState] = useState<SubmitState>({ status: "idle" });
+  const [submitState, setSubmitState] = useState<SubmitState>({
+    status: "idle",
+  });
   const [savedToken, setSavedToken] = useState<string | null>(null);
 
   useEffect(() => {
     try {
       const storedEmail = localStorage.getItem("orkg_sandbox_email");
       const storedToken = localStorage.getItem("orkg_sandbox_token");
+
       if (storedEmail) setEmail(storedEmail);
       if (storedToken) setSavedToken(storedToken);
     } catch {}
@@ -66,9 +75,16 @@ export function OrkgSubmitModal({
   }, [handleReset, onClose]);
 
   const handleSubmit = useCallback(async () => {
-    if ((!savedToken && (!email.trim() || !password.trim())) || !resourceLabel.trim()) return;
+    if (
+      (!savedToken && (!email.trim() || !password.trim())) ||
+      !resourceLabel.trim()
+    )
+      return;
 
-    setSubmitState({ status: "loading", step: savedToken ? "Connecting…" : "Authenticating…" });
+    setSubmitState({
+      status: "loading",
+      step: savedToken ? "Connecting…" : "Authenticating…",
+    });
 
     // Step 1: Authenticate
     let token = savedToken;
@@ -76,47 +92,53 @@ export function OrkgSubmitModal({
     if (!token) {
       try {
         const authRes = await fetch("/api/orkg-sandbox/auth", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim(), password }),
-      });
-      const authText = await authRes.text();
-      let authData;
-      try {
-        authData = authText ? JSON.parse(authText) : {};
-      } catch {
-        throw new Error(`API returned invalid JSON: ${authText.slice(0, 100)}`);
-      }
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: email.trim(), password }),
+        });
+        const authText = await authRes.text();
+        let authData;
 
-      if (!authRes.ok || !authData.access_token) {
+        try {
+          authData = authText ? JSON.parse(authText) : {};
+        } catch {
+          throw new Error(
+            `API returned invalid JSON: ${authText.slice(0, 100)}`,
+          );
+        }
+
+        if (!authRes.ok || !authData.access_token) {
+          setSubmitState({
+            status: "error",
+            message:
+              authData.detail ||
+              authData.error ||
+              `Authentication failed (${authRes.status})`,
+          });
+
+          return;
+        }
+
+        token = authData.access_token;
+        setSavedToken(token);
+        try {
+          localStorage.setItem("orkg_sandbox_token", token as string);
+          localStorage.setItem("orkg_sandbox_email", email.trim());
+        } catch {}
+      } catch (err) {
         setSubmitState({
           status: "error",
-          message:
-            authData.detail ||
-            authData.error ||
-            `Authentication failed (${authRes.status})`,
+          message: `Network error: ${String(err)}`,
         });
 
         return;
       }
-
-      token = authData.access_token;
-      setSavedToken(token);
-      try {
-        localStorage.setItem("orkg_sandbox_token", token as string);
-        localStorage.setItem("orkg_sandbox_email", email.trim());
-      } catch {}
-    } catch (err) {
-      setSubmitState({
-        status: "error",
-        message: `Network error: ${String(err)}`,
-      });
-
-      return;
-    }
     } // Closes `if (!token)`
 
-    setSubmitState({ status: "loading", step: "Submitting instance to ORKG Sandbox…" });
+    setSubmitState({
+      status: "loading",
+      step: "Submitting instance to ORKG Sandbox…",
+    });
 
     // Step 2: Build triples and submit
     try {
@@ -134,20 +156,26 @@ export function OrkgSubmitModal({
       });
       const submitText = await submitRes.text();
       let submitData;
+
       try {
         submitData = submitText ? JSON.parse(submitText) : {};
       } catch {
-        throw new Error(`Submit API returned invalid JSON: ${submitText.slice(0, 100)}`);
+        throw new Error(
+          `Submit API returned invalid JSON: ${submitText.slice(0, 100)}`,
+        );
       }
 
       if (!submitRes.ok || !submitData.resourceId) {
         if (submitRes.status === 401) {
           setSavedToken(null);
-          try { localStorage.removeItem("orkg_sandbox_token"); } catch {}
+          try {
+            localStorage.removeItem("orkg_sandbox_token");
+          } catch {}
           setSubmitState({
             status: "error",
             message: "Session expired or invalid token. Please log in again.",
           });
+
           return;
         }
 
@@ -175,30 +203,43 @@ export function OrkgSubmitModal({
         message: `Submission network error: ${String(err)}`,
       });
     }
-  }, [email, password, resourceLabel, templateId, targetClassId, mapping, values, savedToken]);
+  }, [
+    email,
+    password,
+    resourceLabel,
+    templateId,
+    targetClassId,
+    mapping,
+    values,
+    savedToken,
+  ]);
 
   if (!isOpen) return null;
 
   return (
     /* Backdrop */
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      role="dialog"
-      aria-modal="true"
       aria-labelledby="orkg-submit-modal-title"
-      onClick={(e) => e.target === e.currentTarget && handleClose()}
+      aria-modal="true"
+      className="fixed inset-0 z-[3000] flex items-center justify-center p-4"
+      role="dialog"
     >
       {/* Blurred overlay */}
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+      <button
+        aria-label="Close modal"
+        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+        type="button"
+        onClick={handleClose}
+      />
 
       {/* Panel */}
-      <div className="relative z-10 w-full max-w-md rounded-2xl border border-default-200 bg-background shadow-2xl">
+      <div className="relative z-[3001] w-full max-w-md rounded-2xl border border-default-200 bg-background shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-default-200 px-6 py-4">
           <div>
             <h2
-              id="orkg-submit-modal-title"
               className="text-lg font-bold text-foreground"
+              id="orkg-submit-modal-title"
             >
               Submit to ORKG Sandbox
             </h2>
@@ -226,7 +267,11 @@ export function OrkgSubmitModal({
               strokeWidth={2}
               viewBox="0 0 24 24"
             >
-              <path d="M6 18L18 6M6 6l12 12" strokeLinecap="round" strokeLinejoin="round" />
+              <path
+                d="M6 18L18 6M6 6l12 12"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
             </svg>
           </button>
         </div>
@@ -244,17 +289,23 @@ export function OrkgSubmitModal({
                   strokeWidth={2}
                   viewBox="0 0 24 24"
                 >
-                  <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" strokeLinecap="round" strokeLinejoin="round" />
+                  <path
+                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
                 </svg>
                 <div>
-                  <p className="font-semibold text-success-800">Instance created!</p>
+                  <p className="font-semibold text-success-800">
+                    Instance created!
+                  </p>
                   <p className="mt-0.5 text-sm text-success-700">
                     Resource{" "}
                     <code className="rounded bg-success-100 px-1 text-xs">
                       {submitState.resourceId}
                     </code>{" "}
-                    with{" "}
-                    <strong>{submitState.statementsCreated}</strong> statement
+                    with <strong>{submitState.statementsCreated}</strong>{" "}
+                    statement
                     {submitState.statementsCreated !== 1 ? "s" : ""}.
                   </p>
                 </div>
@@ -267,8 +318,18 @@ export function OrkgSubmitModal({
                 target="_blank"
               >
                 Open in ORKG Sandbox
-                <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                  <path d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" strokeLinecap="round" strokeLinejoin="round" />
+                <svg
+                  className="h-4 w-4"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
                 </svg>
               </a>
 
@@ -276,7 +337,8 @@ export function OrkgSubmitModal({
                 <details className="rounded-lg border border-warning-200 bg-warning-50 p-3">
                   <summary className="cursor-pointer text-sm font-medium text-warning-700">
                     {submitState.errors.length} statement
-                    {submitState.errors.length !== 1 ? "s" : ""} could not be created
+                    {submitState.errors.length !== 1 ? "s" : ""} could not be
+                    created
                   </summary>
                   <ul className="mt-2 space-y-1">
                     {submitState.errors.map((e, i) => (
@@ -310,7 +372,11 @@ export function OrkgSubmitModal({
                   strokeWidth={2}
                   viewBox="0 0 24 24"
                 >
-                  <path d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" strokeLinecap="round" strokeLinejoin="round" />
+                  <path
+                    d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
                 </svg>
                 <p className="text-sm text-danger-800">{submitState.message}</p>
               </div>
@@ -356,14 +422,17 @@ export function OrkgSubmitModal({
                   onValueChange={setResourceLabel}
                 />
                 <p className="mt-1 text-xs text-default-400">
-                  This will be the label of the new ORKG resource created on the sandbox.
+                  This will be the label of the new ORKG resource created on the
+                  sandbox.
                 </p>
               </div>
 
               {/* Divider */}
               <div className="relative flex items-center gap-2 py-1">
                 <div className="h-px flex-1 bg-default-200" />
-                <span className="text-xs text-default-400">Sandbox credentials</span>
+                <span className="text-xs text-default-400">
+                  Sandbox credentials
+                </span>
                 <div className="h-px flex-1 bg-default-200" />
               </div>
 
@@ -374,13 +443,13 @@ export function OrkgSubmitModal({
                   </p>
                   <button
                     className="mt-1 text-xs text-primary underline"
+                    type="button"
                     onClick={() => {
                       setSavedToken(null);
                       try {
                         localStorage.removeItem("orkg_sandbox_token");
                       } catch {}
                     }}
-                    type="button"
                   >
                     Change user / Log out
                   </button>
@@ -389,8 +458,8 @@ export function OrkgSubmitModal({
                 <>
                   {/* Email */}
                   <Input
-                    id="orkg-sandbox-email"
                     autoComplete="email"
+                    id="orkg-sandbox-email"
                     label="Email"
                     placeholder="your@email.com"
                     size="sm"
@@ -402,8 +471,8 @@ export function OrkgSubmitModal({
 
                   {/* Password */}
                   <Input
-                    id="orkg-sandbox-password"
                     autoComplete="current-password"
+                    id="orkg-sandbox-password"
                     label="Password"
                     placeholder="••••••••"
                     size="sm"
@@ -414,8 +483,9 @@ export function OrkgSubmitModal({
                   />
 
                   <p className="text-xs text-default-400">
-                    Your token and email will be saved securely in your browser so you don&apos;t have to log in every time.
-                    Don&apos;t have an account?{" "}
+                    Your token and email will be saved securely in your browser
+                    so you don&apos;t have to log in every time. Don&apos;t have
+                    an account?{" "}
                     <a
                       className="text-primary underline"
                       href="https://sandbox.orkg.org/sign-up"
@@ -440,7 +510,10 @@ export function OrkgSubmitModal({
             </Button>
             <Button
               color="primary"
-              isDisabled={(!savedToken && (!email.trim() || !password.trim())) || !resourceLabel.trim()}
+              isDisabled={
+                (!savedToken && (!email.trim() || !password.trim())) ||
+                !resourceLabel.trim()
+              }
               size="sm"
               onPress={handleSubmit}
             >

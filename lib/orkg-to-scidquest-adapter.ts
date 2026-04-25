@@ -12,6 +12,7 @@ import {
   ORKG_SPARQL_ENDPOINT,
   buildResourcesQuery,
 } from "./sparql/orkg-queries";
+import { ResourceLabelCache } from "./resource-label-cache";
 
 /** ScidQuest QuestionnaireTemplate-compatible types */
 export interface ScidQuestQuestion {
@@ -98,7 +99,20 @@ async function fetchOrkgResourceOptions(
     const bindings = result?.results?.bindings ?? [];
 
     const labels: string[] = bindings
-      .map((b: any) => b?.oLabel?.value ?? b?.o?.value)
+      .map((b: any) => {
+        const label = b?.oLabel?.value ?? b?.o?.value;
+        const id = b?.o?.value;
+        if (label && id) {
+          ResourceLabelCache.set(id, String(label));
+          ResourceLabelCache.set(String(label), id);
+          const shortId = id.split("/").pop();
+          if (shortId) {
+            ResourceLabelCache.set(shortId, String(label));
+            ResourceLabelCache.set(String(label), shortId);
+          }
+        }
+        return label;
+      })
       .filter(Boolean)
       .map((v: any) => String(v));
 

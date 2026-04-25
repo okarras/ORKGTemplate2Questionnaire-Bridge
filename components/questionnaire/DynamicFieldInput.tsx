@@ -163,10 +163,22 @@ export function DynamicFieldInput({
           }
           selectedKeys={
             multiselect
-              ? new Set(Array.isArray(value) ? value : [])
-              : typeof value === "string" && value
-                ? new Set([value])
-                : new Set()
+              ? new Set(
+                  (Array.isArray(value) ? value : []).map(
+                    (v) =>
+                      selectOptions.find(
+                        (o) => o.value === v || o.label === v
+                      )?.value ?? String(v)
+                  )
+                )
+              : (() => {
+                  const val = typeof value === "string" ? value : "";
+                  if (!val) return new Set();
+                  const match = selectOptions.find(
+                    (o) => o.value === val || o.label === val
+                  );
+                  return new Set([match ? match.value : val]);
+                })()
           }
           selectionMode={multiselect ? "multiple" : "single"}
           onSelectionChange={(keys) => {

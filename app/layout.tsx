@@ -1,5 +1,5 @@
 import "@/styles/globals.css";
-import "scidquest/dist/contribute-standalone.css";
+import "../node_modules/@orkg/scidquest/dist/scidquest.css";
 import { Metadata, Viewport } from "next";
 
 import { Providers } from "./providers";

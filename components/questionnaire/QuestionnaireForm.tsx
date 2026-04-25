@@ -8,7 +8,13 @@ import type {
 import type { InputType } from "@/types/template";
 import type { DragEndEvent } from "@dnd-kit/core";
 
-import { useCallback, useRef, useState, type ChangeEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+} from "react";
 import Link from "next/link";
 import { Button } from "@heroui/button";
 import { Switch } from "@heroui/switch";
@@ -196,6 +202,12 @@ interface QuestionnaireFormProps {
    * When false, starts in "Fill mode" (just the questionnaire fields).
    */
   initialEditMode?: boolean;
+  /** Optional externally managed answers (used for cross-view sync). */
+  values?: Record<string, FormValue>;
+  /** Emits whenever internal answers change. */
+  onValuesChange?: (values: Record<string, FormValue>) => void;
+  /** Show/hide built-in ORKG submit button + modal. */
+  showSubmitButton?: boolean;
 }
 
 export function QuestionnaireForm({
@@ -205,14 +217,36 @@ export function QuestionnaireForm({
   mapping,
   backHref = "/",
   initialEditMode = true,
+  values: controlledValues,
+  onValuesChange,
+  showSubmitButton = true,
 }: QuestionnaireFormProps) {
-  const [values, setValues] = useState<Record<string, FormValue>>(() =>
-    buildInitialValues(mapping),
+  const isControlled = controlledValues !== undefined;
+  const [localValues, setLocalValues] = useState<Record<string, FormValue>>(
+    () => controlledValues ?? buildInitialValues(mapping),
   );
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [editMode, setEditMode] = useState(initialEditMode);
   const [showSubmitModal, setShowSubmitModal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const values = isControlled ? controlledValues : localValues;
+
+  const handleValuesChange = useCallback(
+    (updater: (prev: Record<string, FormValue>) => Record<string, FormValue>) => {
+      if (isControlled) {
+        const next = updater(controlledValues);
+        if (onValuesChange) onValuesChange(next);
+      } else {
+        setLocalValues((prev) => {
+          const next = updater(prev);
+          if (onValuesChange) onValuesChange(next);
+          return next;
+        });
+      }
+    },
+    [isControlled, controlledValues, onValuesChange],
+  );
 
   const [structure, setStructure, { undo, redo, canUndo, canRedo }] =
     useUndoableState<StructureState>({
@@ -285,10 +319,10 @@ export function QuestionnaireForm({
       });
 
       if (type === "customField") {
-        setValues((prev) => ({ ...prev, [CUSTOM_PREFIX + id]: "" }));
+        handleValuesChange((prev) => ({ ...prev, [CUSTOM_PREFIX + id]: "" }));
       }
     },
-    [setStructure],
+    [setStructure, handleValuesChange],
   );
 
   const moveBlock = useCallback(
@@ -325,7 +359,7 @@ export function QuestionnaireForm({
             customBlocks: nextCustom,
           };
         });
-        setValues((prev) => {
+        handleValuesChange((prev) => {
           const next = { ...prev };
 
           delete next[CUSTOM_PREFIX + block.id];
@@ -429,10 +463,10 @@ export function QuestionnaireForm({
       }));
 
       if (type === "customField") {
-        setValues((prev) => ({ ...prev, [CUSTOM_PREFIX + id]: "" }));
+        handleValuesChange((prev) => ({ ...prev, [CUSTOM_PREFIX + id]: "" }));
       }
     },
-    [setStructure],
+    [setStructure, handleValuesChange],
   );
 
   const removeNestedBlock = useCallback(
@@ -453,7 +487,7 @@ export function QuestionnaireForm({
           },
         };
       });
-      setValues((prev) => {
+      handleValuesChange((prev) => {
         const next = { ...prev };
 
         delete next[CUSTOM_PREFIX + childId];
@@ -461,7 +495,7 @@ export function QuestionnaireForm({
         return next;
       });
     },
-    [setStructure],
+    [setStructure, handleValuesChange],
   );
 
   const reorderSectionChildren = useCallback(
@@ -496,7 +530,7 @@ export function QuestionnaireForm({
 
         return { ...prev, customBlocks: nextCustom };
       });
-      setValues((prev) => {
+      handleValuesChange((prev) => {
         const next = { ...prev };
 
         delete next[CUSTOM_PREFIX + childId];
@@ -504,7 +538,7 @@ export function QuestionnaireForm({
         return next;
       });
     },
-    [setStructure],
+    [setStructure, handleValuesChange],
   );
   const getValue = useCallback(
     (propertyId: string, hasSub: boolean): FormValue => {
@@ -518,8 +552,8 @@ export function QuestionnaireForm({
   );
 
   const setValue = useCallback((propertyId: string, value: FormValue) => {
-    setValues((prev) => ({ ...prev, [propertyId]: value }));
-  }, []);
+    handleValuesChange((prev) => ({ ...prev, [propertyId]: value }));
+  }, [handleValuesChange]);
 
   const onFieldOverride = useCallback(
     (propertyPath: string, overrides: Partial<FieldOverrides[string]>) => {
@@ -642,7 +676,7 @@ export function QuestionnaireForm({
         const answers = data.answers ?? {};
         const customAnswers = data.customAnswers ?? {};
 
-        setValues((prev) => {
+        handleValuesChange((prev) => {
           const next = { ...prev };
 
           for (const [propId, prop] of Object.entries(mapping)) {
@@ -671,7 +705,7 @@ export function QuestionnaireForm({
         event.target.value = "";
       }
     },
-    [mapping, setValues],
+    [mapping, handleValuesChange],
   );
 
   const handleExportPdf = useCallback(async () => {
@@ -1821,16 +1855,20 @@ export function QuestionnaireForm({
               Export PDF
             </Button>
           </div>
-          <div className="h-4 w-px bg-default-300" />
-          <Button
-            id="orkg-submit-btn"
-            color="success"
-            size="sm"
-            variant="flat"
-            onPress={() => setShowSubmitModal(true)}
-          >
-            🚀 Submit to ORKG
-          </Button>
+          {showSubmitButton && (
+            <>
+              <div className="h-4 w-px bg-default-300" />
+              <Button
+                color="success"
+                id="orkg-submit-btn"
+                size="sm"
+                variant="flat"
+                onPress={() => setShowSubmitModal(true)}
+              >
+                🚀 Submit to ORKG
+              </Button>
+            </>
+          )}
         </div>
       </div>
 
@@ -2021,15 +2059,17 @@ export function QuestionnaireForm({
       </div>
 
       {/* ORKG Sandbox submission modal */}
-      <OrkgSubmitModal
-        isOpen={showSubmitModal}
-        mapping={mapping}
-        targetClassId={targetClassId}
-        templateId={templateId}
-        templateLabel={label}
-        values={values}
-        onClose={() => setShowSubmitModal(false)}
-      />
+      {showSubmitButton && (
+        <OrkgSubmitModal
+          isOpen={showSubmitModal}
+          mapping={mapping}
+          targetClassId={targetClassId}
+          templateId={templateId}
+          templateLabel={label}
+          values={values}
+          onClose={() => setShowSubmitModal(false)}
+        />
+      )}
     </section>
   );
 }

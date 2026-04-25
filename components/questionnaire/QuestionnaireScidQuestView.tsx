@@ -4,18 +4,22 @@ import type { ScidQuestQuestionnaireTemplate } from "@/lib/orkg-to-scidquest-ada
 
 import Link from "next/link";
 import { Button } from "@heroui/button";
-import { ResearchQuestionnaireApp } from "scidquest";
+import { ResearchQuestionnaireApp } from "@orkg/scidquest";
 
 import { ScidQuestProviders } from "./ScidQuestProviders";
 
 interface QuestionnaireScidQuestViewProps {
   templateSpec: ScidQuestQuestionnaireTemplate;
   label: string;
+  initialAnswers?: Record<string, unknown>;
+  onAnswersChange?: (answers: Record<string, unknown>) => void;
 }
 
 export function QuestionnaireScidQuestView({
   templateSpec,
   label,
+  initialAnswers,
+  onAnswersChange,
 }: QuestionnaireScidQuestViewProps) {
   return (
     <section className="flex flex-col flex-grow py-4 w-full h-full overflow-x-hidden overflow-y-hidden">
@@ -39,8 +43,10 @@ export function QuestionnaireScidQuestView({
         <div className="flex-grow w-full flex flex-col min-w-0 overflow-hidden h-[calc(100vh-200px)] min-h-[600px]">
           <ResearchQuestionnaireApp
             {...({
+              initialAnswers,
               templateSpec,
               layout: "split",
+              onAnswersChange,
               showPdfViewer: true,
             } as React.ComponentProps<typeof ResearchQuestionnaireApp>)}
           />

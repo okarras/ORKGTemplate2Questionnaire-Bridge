@@ -1,7 +1,7 @@
 "use client";
 
 import { ThemeProvider, createTheme, CssBaseline } from "@mui/material";
-import { ScidQuestProvider, QuestionnaireAIProvider } from "scidquest";
+import { ScidQuestProvider, QuestionnaireAIProvider } from "@orkg/scidquest";
 import { useMemo } from "react";
 
 import { createApiLLMService } from "@/lib/llm-service";

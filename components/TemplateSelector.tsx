@@ -2,8 +2,7 @@
 
 import type { TemplateListItem } from "@/lib/orkg-templates";
 
-import { useState, useEffect, useCallback, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardBody } from "@heroui/card";
 import { Input } from "@heroui/input";
 import { Button } from "@heroui/button";
@@ -13,6 +12,7 @@ import { Chip } from "@heroui/chip";
 import { getOrkgResourceLink } from "@/lib/orkg-links";
 
 const ORKG_TEMPLATES_URL = "https://orkg.org/templates";
+const PENDING_TEMPLATE_KEY = "pending_template_navigation";
 
 function useDebounce<T>(value: T, delay: number): T {
   const [debouncedValue, setDebouncedValue] = useState(value);
@@ -27,14 +27,12 @@ function useDebounce<T>(value: T, delay: number): T {
 }
 
 export function TemplateSelector() {
-  const router = useRouter();
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [templates, setTemplates] = useState<TemplateListItem[]>([]);
   const [total, setTotal] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [directId, setDirectId] = useState("");
-  const [isPending, startTransition] = useTransition();
   const [loadingQId, setLoadingQId] = useState<string | null>(null);
   const debouncedQuery = useDebounce(query, 300);
 
@@ -73,6 +71,37 @@ export function TemplateSelector() {
     fetchTemplates(debouncedQuery);
   }, [debouncedQuery, fetchTemplates]);
 
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(PENDING_TEMPLATE_KEY);
+      if (!raw) return;
+
+      const payload = JSON.parse(raw) as {
+        templateId?: string;
+        attempts?: number;
+        ts?: number;
+      };
+      const templateId = payload.templateId;
+      const attempts = payload.attempts ?? 0;
+      const ts = payload.ts ?? 0;
+      const isFresh = Date.now() - ts < 20_000;
+
+      if (!templateId || !isFresh || attempts >= 2) {
+        sessionStorage.removeItem(PENDING_TEMPLATE_KEY);
+        return;
+      }
+
+      sessionStorage.setItem(
+        PENDING_TEMPLATE_KEY,
+        JSON.stringify({ templateId, attempts: attempts + 1, ts }),
+      );
+      setLoadingQId(templateId);
+      window.location.href = `/questionnaire/${templateId}`;
+    } catch {
+      sessionStorage.removeItem(PENDING_TEMPLATE_KEY);
+    }
+  }, []);
+
   const handleDirectId = (e: React.FormEvent) => {
     e.preventDefault();
     const raw = directId.trim();
@@ -90,16 +119,13 @@ export function TemplateSelector() {
     }
 
     setLoadingQId(templateId);
-    startTransition(() => {
-      router.push(`/questionnaire/${templateId}`);
-    });
-  };
-
-  const handleOpenTemplate = (id: string) => {
-    setLoadingQId(id);
-    startTransition(() => {
-      router.push(`/questionnaire/${id}`);
-    });
+    try {
+      sessionStorage.setItem(
+        PENDING_TEMPLATE_KEY,
+        JSON.stringify({ templateId, attempts: 0, ts: Date.now() }),
+      );
+    } catch {}
+    window.location.href = `/questionnaire/${templateId}`;
   };
 
   return (
@@ -159,14 +185,12 @@ export function TemplateSelector() {
           <Button
             className="font-medium"
             color="primary"
-            isLoading={isPending && !!loadingQId && directId.toLowerCase().includes(loadingQId.toLowerCase())}
+            isLoading={
+              !!loadingQId &&
+              directId.toLowerCase().includes(loadingQId.toLowerCase())
+            }
             type="submit"
             variant="flat"
-            onMouseEnter={() => {
-              const raw = directId.trim();
-              const match = raw.match(/R\d+/i);
-              if (match) router.prefetch(`/questionnaire/${match[0].toUpperCase()}`);
-            }}
           >
             Open questionnaire
           </Button>
@@ -250,16 +274,29 @@ export function TemplateSelector() {
                     </p>
                   )}
                   <div className="mt-2 flex gap-2">
-                    <Button
-                      color="primary"
-                      isLoading={isPending && loadingQId === t.id}
-                      size="sm"
-                      variant="flat"
-                      onMouseEnter={() => router.prefetch(`/questionnaire/${t.id}`)}
-                      onPress={() => handleOpenTemplate(t.id)}
+                    <a
+                      className="inline-flex items-center justify-center rounded-xl bg-primary/15 px-3 py-1.5 text-sm font-medium text-primary transition-opacity hover:opacity-90"
+                      href={`/questionnaire/${t.id}`}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setLoadingQId(t.id);
+                        try {
+                          sessionStorage.setItem(
+                            PENDING_TEMPLATE_KEY,
+                            JSON.stringify({
+                              templateId: t.id,
+                              attempts: 0,
+                              ts: Date.now(),
+                            }),
+                          );
+                        } catch {}
+                        window.location.href = `/questionnaire/${t.id}`;
+                      }}
                     >
-                      Start questionnaire
-                    </Button>
+                      {loadingQId === t.id
+                        ? "Loading..."
+                        : "Start questionnaire"}
+                    </a>
                     {getOrkgResourceLink(t.id) && (
                       <Button
                         as="a"
