@@ -3,10 +3,10 @@ import type {
   EnrichedTemplateMapping,
   EnrichedSubtemplateProperty,
   SubtemplateProperty,
-  OrkgValueType,
 } from "@/types/template";
+import type { OrkgPropertyValueMeta } from "@/lib/sparql/orkg-queries";
 
-import { fetchValueTypeFromOrkg } from "../../lib/sparql/fetch-value-type";
+import { fetchValueTypeFromOrkg } from "@/lib/sparql/fetch-value-type";
 
 /**
  * Extracts unique predicate IDs from template mapping (including nested).
@@ -32,14 +32,14 @@ function collectPredicateIds(
 /**
  * Recursively enriches template mapping with valueType from SPARQL.
  * - IRI → resource (autoselect)
- * - Literal → text/textarea
+ * - Literal → input type from XSD datatype when available (e.g. boolean → checkbox)
  * - Blank node / Unknown → default to text
  */
 export async function enrichTemplateMapping(
   mapping: TemplateMapping,
 ): Promise<EnrichedTemplateMapping> {
   const ids = collectPredicateIds(mapping);
-  const valueTypeCache = new Map<string, OrkgValueType>();
+  const valueTypeCache = new Map<string, OrkgPropertyValueMeta>();
 
   const BATCH_SIZE = 5;
   const idArray = Array.from(ids);
@@ -49,9 +49,9 @@ export async function enrichTemplateMapping(
 
     await Promise.all(
       batch.map(async (id) => {
-        const vt = await fetchValueTypeFromOrkg(id);
+        const meta = await fetchValueTypeFromOrkg(id);
 
-        valueTypeCache.set(id, vt);
+        valueTypeCache.set(id, meta);
       }),
     );
   }
@@ -60,11 +60,15 @@ export async function enrichTemplateMapping(
     prop: SubtemplateProperty,
     propertyId: string,
   ): EnrichedSubtemplateProperty {
-    const valueType = valueTypeCache.get(propertyId) ?? "Literal";
-    // console.log(`Enriching property ${propertyId} with value type ${valueType}`);
+    const meta = valueTypeCache.get(propertyId) ?? {
+      valueType: "Literal" as const,
+    };
     const enriched: EnrichedSubtemplateProperty = {
       ...prop,
-      valueType,
+      valueType: meta.valueType,
+      ...(meta.literalDatatype !== undefined
+        ? { literalDatatype: meta.literalDatatype }
+        : {}),
     };
 
     if (prop.subtemplate_properties) {

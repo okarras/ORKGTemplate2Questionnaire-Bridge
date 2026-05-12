@@ -281,15 +281,17 @@ export function generateTemplateMapping(
 
     if (property.class?.id) {
       const classId = property.class.id;
+
+      propMapping.class_id = classId;
+      const createLink = getOrkgCreateResourceLink(classId);
+
+      if (createLink) propMapping.create_link = createLink;
+
       const targetTemplate = templateMap.get(classId);
 
       if (targetTemplate) {
         propMapping.subtemplate_id = targetTemplate.id;
         propMapping.subtemplate_label = targetTemplate.label;
-        propMapping.class_id = classId;
-        const createLink = getOrkgCreateResourceLink(classId);
-
-        if (createLink) propMapping.create_link = createLink;
 
         if (
           targetTemplate.properties?.length &&

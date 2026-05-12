@@ -33,6 +33,11 @@ export interface SubtemplateProperty {
 /** Property enriched with SPARQL-detected value type from preprocessing */
 export interface EnrichedSubtemplateProperty extends SubtemplateProperty {
   valueType?: OrkgValueType;
+  /**
+   * When `valueType` is Literal: RDF datatype IRI from SPARQL `DATATYPE(?o)`
+   * (e.g. `http://www.w3.org/2001/XMLSchema#boolean`), if detectable.
+   */
+  literalDatatype?: string;
 }
 
 export type TemplateMapping = Record<string, SubtemplateProperty>;

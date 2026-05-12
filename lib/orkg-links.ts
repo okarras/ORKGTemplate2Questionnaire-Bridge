@@ -12,7 +12,7 @@ export function getOrkgPropertyLink(predicateId: string): string | null {
 }
 
 export function getOrkgClassLink(classId: string): string | null {
-  if (classId?.match(/^C\d+$/)) {
+  if (classId) {
     return `https://orkg.org/class/${classId}`;
   }
 
@@ -21,7 +21,7 @@ export function getOrkgClassLink(classId: string): string | null {
 
 /** Link to create a new ORKG resource of a given class */
 export function getOrkgCreateResourceLink(classId: string): string | null {
-  if (classId?.match(/^C\d+$/)) {
+  if (classId) {
     return `https://orkg.org/resources/create?classes=${classId}`;
   }
 

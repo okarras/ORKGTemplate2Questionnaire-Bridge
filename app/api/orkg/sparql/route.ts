@@ -5,7 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   ORKG_SPARQL_ENDPOINT,
   buildValueTypeQuery,
-  parseValueTypeResult,
+  parseValueTypeMeta,
   type SparqlResult,
 } from "@/lib/sparql/orkg-queries";
 
@@ -125,9 +125,9 @@ export async function GET(request: NextRequest) {
     }
 
     const result: SparqlResult = await response.json();
-    const valueType = parseValueTypeResult(result);
+    const { valueType, literalDatatype } = parseValueTypeMeta(result);
 
-    return NextResponse.json({ valueType });
+    return NextResponse.json({ valueType, literalDatatype });
   } catch {
     return NextResponse.json(
       { valueType: "Literal" as OrkgValueType },

@@ -63,9 +63,7 @@ export async function POST(request: NextRequest) {
     if (!tokenRes.ok) {
       const errData = await tokenRes.json().catch(() => ({}));
       const detail =
-        errData.error_description ||
-        errData.error ||
-        `HTTP ${tokenRes.status}`;
+        errData.error_description || errData.error || `HTTP ${tokenRes.status}`;
 
       return NextResponse.json(
         { error: "Authentication failed", detail },
@@ -78,7 +76,10 @@ export async function POST(request: NextRequest) {
 
     if (!access_token) {
       return NextResponse.json(
-        { error: "No access_token in Keycloak response", detail: JSON.stringify(data) },
+        {
+          error: "No access_token in Keycloak response",
+          detail: JSON.stringify(data),
+        },
         { status: 502 },
       );
     }

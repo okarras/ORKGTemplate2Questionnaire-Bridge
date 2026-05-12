@@ -238,8 +238,8 @@ export function TextBlock({
           )}
         </p>
       </div>
-      {editMode && (
-        <div className="absolute -right-1 -top-1 z-10 flex gap-1 rounded-lg bg-background/95 p-1 shadow-md opacity-0 transition-opacity group-hover:opacity-100">
+      <div className="absolute -right-1 -top-1 z-10 flex gap-1 rounded-lg bg-background/95 p-1 shadow-md opacity-0 transition-opacity group-hover:opacity-100">
+        {editMode && (
           <Button
             size="sm"
             variant="flat"
@@ -251,11 +251,11 @@ export function TextBlock({
           >
             Edit
           </Button>
-          <Button color="danger" size="sm" variant="flat" onPress={onRemove}>
-            Remove
-          </Button>
-        </div>
-      )}
+        )}
+        <Button color="danger" size="sm" variant="flat" onPress={onRemove}>
+          Remove
+        </Button>
+      </div>
     </div>
   );
 }
@@ -531,8 +531,8 @@ export function SectionBlock({
           </DropdownMenu>
         </Dropdown>
       )}
-      {editMode && (
-        <div className="absolute -right-1 -top-1 z-10 flex gap-1 rounded-lg bg-background/95 p-1 shadow-md opacity-0 transition-opacity group-hover:opacity-100">
+      <div className="absolute -right-1 -top-1 z-10 flex gap-1 rounded-lg bg-background/95 p-1 shadow-md opacity-0 transition-opacity group-hover:opacity-100">
+        {editMode && (
           <Button
             size="sm"
             variant="flat"
@@ -543,11 +543,11 @@ export function SectionBlock({
           >
             Edit
           </Button>
-          <Button color="danger" size="sm" variant="flat" onPress={onRemove}>
-            Remove
-          </Button>
-        </div>
-      )}
+        )}
+        <Button color="danger" size="sm" variant="flat" onPress={onRemove}>
+          Remove
+        </Button>
+      </div>
     </div>
   );
 }
@@ -673,8 +673,8 @@ export function HtmlBlock({
         dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
         className="[&_a]:text-primary [&_a]:underline [&_h1]:text-lg [&_h2]:text-base [&_h3]:text-sm [&_ul]:list-disc [&_ol]:list-decimal [&_li]:ml-4 rounded-xl border border-default-200 bg-default-50/60 px-5 py-4 text-sm leading-relaxed text-default-700 shadow-sm [&_p]:mb-2 [&_p:last-child]:mb-0"
       />
-      {editMode && (
-        <div className="absolute -right-1 -top-1 z-10 flex gap-1 rounded-lg bg-background/95 p-1 shadow-md opacity-0 transition-opacity group-hover:opacity-100">
+      <div className="absolute -right-1 -top-1 z-10 flex gap-1 rounded-lg bg-background/95 p-1 shadow-md opacity-0 transition-opacity group-hover:opacity-100">
+        {editMode && (
           <Button
             size="sm"
             variant="flat"
@@ -685,11 +685,11 @@ export function HtmlBlock({
           >
             Edit
           </Button>
-          <Button color="danger" size="sm" variant="flat" onPress={onRemove}>
-            Remove
-          </Button>
-        </div>
-      )}
+        )}
+        <Button color="danger" size="sm" variant="flat" onPress={onRemove}>
+          Remove
+        </Button>
+      </div>
     </div>
   );
 }
@@ -928,8 +928,8 @@ export function CustomFieldBlock({
         value={value}
         onChange={onChange}
       />
-      {editMode && (
-        <div className="absolute -right-1 -top-1 z-10 flex gap-1 rounded-lg bg-background/95 p-1 shadow-md opacity-0 transition-opacity group-hover:opacity-100">
+      <div className="absolute -right-1 -top-1 z-10 flex gap-1 rounded-lg bg-background/95 p-1 shadow-md opacity-0 transition-opacity group-hover:opacity-100">
+        {editMode && (
           <Button
             size="sm"
             variant="flat"
@@ -949,11 +949,11 @@ export function CustomFieldBlock({
           >
             Edit
           </Button>
-          <Button color="danger" size="sm" variant="flat" onPress={onRemove}>
-            Remove
-          </Button>
-        </div>
-      )}
+        )}
+        <Button color="danger" size="sm" variant="flat" onPress={onRemove}>
+          Remove
+        </Button>
+      </div>
     </div>
   );
 }

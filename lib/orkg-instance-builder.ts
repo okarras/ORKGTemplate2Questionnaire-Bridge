@@ -43,6 +43,30 @@ export interface AnswerTriple {
   subStatements?: AnswerTriple[];
 }
 
+/** Map RDF datatype IRI (from template enrichment) to ORKG literal datatype. */
+function literalUriToAnswerDatatype(
+  uri: string | undefined,
+): AnswerTriple["datatype"] | undefined {
+  if (!uri) return undefined;
+  const u = uri.toLowerCase();
+
+  if (u.endsWith("#boolean")) return "xsd:boolean";
+  if (
+    u.endsWith("#integer") ||
+    u.endsWith("#int") ||
+    u.endsWith("#long") ||
+    u.endsWith("#unsignedint")
+  )
+    return "xsd:integer";
+  if (u.endsWith("#decimal") || u.endsWith("#double") || u.endsWith("#float"))
+    return "xsd:decimal";
+  if (u.endsWith("#date") && !u.includes("datetime")) return "xsd:date";
+  if (u.endsWith("#datetime")) return "xsd:date";
+  if (u.endsWith("#anyuri")) return "xsd:anyURI";
+
+  return undefined;
+}
+
 /** Detect whether a string looks like an ORKG resource IRI */
 function isOrkgIri(v: string): boolean {
   return (
@@ -71,11 +95,23 @@ function scalarToTriples(
     const nested = raw as Record<string, FormValue>;
     const rootValueStr = nested._ !== undefined ? String(nested._).trim() : "";
 
-    if (prop.subtemplate_properties && Object.keys(prop.subtemplate_properties).length > 0) {
+    if (
+      prop.subtemplate_properties &&
+      Object.keys(prop.subtemplate_properties).length > 0
+    ) {
       const subTriples: AnswerTriple[] = [];
-      for (const [subId, subProp] of Object.entries(prop.subtemplate_properties)) {
+
+      for (const [subId, subProp] of Object.entries(
+        prop.subtemplate_properties,
+      )) {
         if (nested[subId] !== undefined) {
-          subTriples.push(...scalarToTriples(subId, nested[subId], subProp as EnrichedSubtemplateProperty));
+          subTriples.push(
+            ...scalarToTriples(
+              subId,
+              nested[subId],
+              subProp as EnrichedSubtemplateProperty,
+            ),
+          );
         }
       }
 
@@ -83,7 +119,11 @@ function scalarToTriples(
         return [
           {
             predicateId,
-            value: rootValueStr || prop.subtemplate_label || prop.label || "Unknown Sub-resource",
+            value:
+              rootValueStr ||
+              prop.subtemplate_label ||
+              prop.label ||
+              "Unknown Sub-resource",
             isLiteral: false,
             isNestedResource: true,
             targetClassId: prop.class_id,
@@ -109,21 +149,28 @@ function scalarToTriples(
   const valueType = (prop as { valueType?: string }).valueType ?? "Unknown";
   const isLiteralVal = !iri && valueType !== "IRI";
 
+  const literalDatatype = (prop as { literalDatatype?: string })
+    .literalDatatype;
+
   let datatype: AnswerTriple["datatype"];
 
   if (isLiteralVal) {
-    if (
-      typeof raw === "boolean" ||
-      valueStr === "true" ||
-      valueStr === "false"
-    ) {
-      datatype = "xsd:boolean";
-    } else if (!Number.isNaN(Number(valueStr)) && valueStr.includes(".")) {
-      datatype = "xsd:decimal";
-    } else if (/^\d+$/.test(valueStr)) {
-      datatype = "xsd:integer";
-    } else if (/^\d{4}-\d{2}-\d{2}$/.test(valueStr)) {
-      datatype = "xsd:date";
+    datatype = literalUriToAnswerDatatype(literalDatatype);
+
+    if (!datatype) {
+      if (
+        typeof raw === "boolean" ||
+        valueStr === "true" ||
+        valueStr === "false"
+      ) {
+        datatype = "xsd:boolean";
+      } else if (!Number.isNaN(Number(valueStr)) && valueStr.includes(".")) {
+        datatype = "xsd:decimal";
+      } else if (/^\d+$/.test(valueStr)) {
+        datatype = "xsd:integer";
+      } else if (/^\d{4}-\d{2}-\d{2}$/.test(valueStr)) {
+        datatype = "xsd:date";
+      }
     }
     // URLs as literals
     if (

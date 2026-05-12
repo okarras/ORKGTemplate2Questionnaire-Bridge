@@ -102,15 +102,18 @@ async function fetchOrkgResourceOptions(
       .map((b: any) => {
         const label = b?.oLabel?.value ?? b?.o?.value;
         const id = b?.o?.value;
+
         if (label && id) {
           ResourceLabelCache.set(id, String(label));
           ResourceLabelCache.set(String(label), id);
           const shortId = id.split("/").pop();
+
           if (shortId) {
             ResourceLabelCache.set(shortId, String(label));
             ResourceLabelCache.set(String(label), shortId);
           }
         }
+
         return label;
       })
       .filter(Boolean)

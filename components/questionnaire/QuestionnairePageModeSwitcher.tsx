@@ -5,13 +5,13 @@ import type { FormValue } from "./QuestionnaireForm";
 import type { ScidQuestQuestionnaireTemplate } from "@/lib/orkg-to-scidquest-adapter";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { buildAnswerTriples } from "@/lib/orkg-instance-builder";
-import { ResourceLabelCache } from "@/lib/resource-label-cache";
 import { Button } from "@heroui/button";
 
 import { QuestionnaireForm } from "./QuestionnaireForm";
 import { QuestionnaireViewLoader } from "./QuestionnaireViewLoader";
 import { OrkgSubmitModal } from "./OrkgSubmitModal";
+
+import { ResourceLabelCache } from "@/lib/resource-label-cache";
 
 type Mode = "form" | "scidquest";
 const PENDING_TEMPLATE_KEY = "pending_template_navigation";
@@ -71,13 +71,15 @@ function convertFormValueToScidQuestAnswer(
 ): unknown {
   if (!hasSubProperties(prop)) {
     if (isManyCardinality(prop.cardinality)) {
-      if (Array.isArray(value)) return value.map(v => ResourceLabelCache.get(v) || v);
+      if (Array.isArray(value))
+        return value.map((v) => ResourceLabelCache.get(v) || v);
       if (value === "" || value === undefined || value === null) return [];
 
       return [ResourceLabelCache.get(value as string) || value];
     }
 
-    const val = Array.isArray(value) ? value[0] ?? "" : value;
+    const val = Array.isArray(value) ? (value[0] ?? "") : value;
+
     return typeof val === "string" ? ResourceLabelCache.get(val) || val : val;
   }
 
@@ -94,7 +96,10 @@ function convertFormValueToScidQuestAnswer(
   for (const [subId, subProp] of Object.entries(
     prop.subtemplate_properties as Record<string, any>,
   )) {
-    nested[subId] = convertFormValueToScidQuestAnswer(obj[subId] ?? "", subProp);
+    nested[subId] = convertFormValueToScidQuestAnswer(
+      obj[subId] ?? "",
+      subProp,
+    );
   }
 
   if (isManyCardinality(prop.cardinality)) {
@@ -104,17 +109,18 @@ function convertFormValueToScidQuestAnswer(
   return nested;
 }
 
-function convertScidQuestAnswerToFormValue(answer: unknown, prop: any): FormValue {
+function convertScidQuestAnswerToFormValue(
+  answer: unknown,
+  prop: any,
+): FormValue {
   if (!hasSubProperties(prop)) {
     if (isManyCardinality(prop.cardinality)) {
       if (Array.isArray(answer)) {
-        return answer.map(a => ResourceLabelCache.get(String(a)) || String(a)) as FormValue;
+        return answer.map(
+          (a) => ResourceLabelCache.get(String(a)) || String(a),
+        ) as FormValue;
       }
-      if (
-        answer === undefined ||
-        answer === null ||
-        answer === ""
-      ) {
+      if (answer === undefined || answer === null || answer === "") {
         return [];
       }
       if (
@@ -146,7 +152,9 @@ function convertScidQuestAnswerToFormValue(answer: unknown, prop: any): FormValu
       typeof answer === "boolean" ||
       Array.isArray(answer)
     ) {
-      if (typeof answer === "string") return ResourceLabelCache.get(answer) || answer;
+      if (typeof answer === "string")
+        return ResourceLabelCache.get(answer) || answer;
+
       return answer as FormValue;
     }
 
@@ -173,6 +181,7 @@ function convertScidQuestAnswerToFormValue(answer: unknown, prop: any): FormValu
 
   if ("value" in source) {
     const v = source.value;
+
     if (
       typeof v === "string" ||
       typeof v === "number" ||
@@ -221,7 +230,10 @@ export function QuestionnairePageModeSwitcher({
     const answers: Record<string, unknown> = {};
 
     for (const [propId, prop] of Object.entries(mapping)) {
-      answers[propId] = convertFormValueToScidQuestAnswer(sharedValues[propId], prop);
+      answers[propId] = convertFormValueToScidQuestAnswer(
+        sharedValues[propId],
+        prop,
+      );
     }
 
     return answers;
@@ -235,7 +247,11 @@ export function QuestionnairePageModeSwitcher({
 
         for (const [propId, prop] of Object.entries(mapping)) {
           if (!(propId in answers)) continue;
-          const newVal = convertScidQuestAnswerToFormValue(answers[propId], prop);
+          const newVal = convertScidQuestAnswerToFormValue(
+            answers[propId],
+            prop,
+          );
+
           if (JSON.stringify(prev[propId]) !== JSON.stringify(newVal)) {
             console.log("SYNC LOOP DEBUG for", propId, ":");
             console.log("  PREV:", JSON.stringify(prev[propId]));
@@ -252,9 +268,7 @@ export function QuestionnairePageModeSwitcher({
   );
 
   return (
-    <section
-      className="w-full h-[calc(100vh-140px)] overflow-x-hidden overflow-y-auto"
-    >
+    <section className="w-full h-[calc(100vh-140px)] overflow-x-hidden overflow-y-auto">
       <div className="flex items-center justify-end gap-3 pb-4 px-6 md:px-10">
         <Button
           color="success"
@@ -282,7 +296,10 @@ export function QuestionnairePageModeSwitcher({
         </Button>
       </div>
 
-      <div className={mode === "form" ? "block" : "hidden"} aria-hidden={mode !== "form"}>
+      <div
+        aria-hidden={mode !== "form"}
+        className={mode === "form" ? "block" : "hidden"}
+      >
         <QuestionnaireForm
           backHref="/"
           initialEditMode={false}
@@ -296,14 +313,18 @@ export function QuestionnairePageModeSwitcher({
         />
       </div>
       <div
-        className={mode === "scidquest" ? "w-full h-full flex flex-col" : "hidden"}
         aria-hidden={mode !== "scidquest"}
+        className={
+          mode === "scidquest" ? "w-full h-full flex flex-col" : "hidden"
+        }
       >
         <QuestionnaireViewLoader
           initialAnswers={scidQuestInitialAnswers}
           label={label}
           templateSpec={scidQuestTemplate}
-          onAnswersChange={handleScidQuestAnswersChange}
+          onAnswersChange={
+            mode === "scidquest" ? handleScidQuestAnswersChange : undefined
+          }
         />
       </div>
 

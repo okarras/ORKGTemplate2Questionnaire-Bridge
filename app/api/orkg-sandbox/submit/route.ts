@@ -80,6 +80,7 @@ export async function POST(request: NextRequest) {
 
     const text = await createRes.text();
     let created;
+
     try {
       created = text ? JSON.parse(text) : {};
     } catch (e) {
@@ -92,10 +93,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const locationHeader = createRes.headers.get("Location") || createRes.headers.get("location");
-    
-    resourceId = created.id || locationHeader?.split("/").pop() || created.location?.split("/").pop();
-    
+    const locationHeader =
+      createRes.headers.get("Location") || createRes.headers.get("location");
+
+    resourceId =
+      created.id ||
+      locationHeader?.split("/").pop() ||
+      created.location?.split("/").pop();
+
     if (!resourceId) {
       return NextResponse.json(
         {
@@ -116,7 +121,10 @@ export async function POST(request: NextRequest) {
   let statementsCreated = 0;
   const errors: string[] = [];
 
-  async function createStatements(subjectId: string, currentTriples: AnswerTriple[]) {
+  async function createStatements(
+    subjectId: string,
+    currentTriples: AnswerTriple[],
+  ) {
     for (const triple of currentTriples) {
       if (!triple.value) continue; // Skip empty
       let objectId: string | undefined;
@@ -134,21 +142,31 @@ export async function POST(request: NextRequest) {
           });
 
           if (!subRes.ok) {
-            errors.push(`Nested resource ${triple.predicateId}: HTTP ${subRes.status}`);
+            errors.push(
+              `Nested resource ${triple.predicateId}: HTTP ${subRes.status}`,
+            );
             continue;
           }
 
           const text = await subRes.text();
           let created: any = {};
+
           try {
             created = text ? JSON.parse(text) : {};
           } catch {}
 
-          const locationHeader = subRes.headers.get("Location") || subRes.headers.get("location");
-          objectId = created.id || locationHeader?.split("/").pop() || created.location?.split("/").pop();
+          const locationHeader =
+            subRes.headers.get("Location") || subRes.headers.get("location");
+
+          objectId =
+            created.id ||
+            locationHeader?.split("/").pop() ||
+            created.location?.split("/").pop();
 
           if (!objectId) {
-            errors.push(`Nested resource ${triple.predicateId}: No ID returned.`);
+            errors.push(
+              `Nested resource ${triple.predicateId}: No ID returned.`,
+            );
             continue;
           }
 
@@ -168,11 +186,14 @@ export async function POST(request: NextRequest) {
           });
 
           if (!litRes.ok) {
-            errors.push(`Literal "${triple.value}" for ${triple.predicateId}: HTTP ${litRes.status}`);
+            errors.push(
+              `Literal "${triple.value}" for ${triple.predicateId}: HTTP ${litRes.status}`,
+            );
             continue;
           }
           const litText = await litRes.text();
           let lit: any = {};
+
           try {
             lit = litText ? JSON.parse(litText) : {};
           } catch {
@@ -205,7 +226,9 @@ export async function POST(request: NextRequest) {
         });
 
         if (!stmtRes.ok) {
-          errors.push(`Statement (${triple.predicateId} → ${objectId}): HTTP ${stmtRes.status}`);
+          errors.push(
+            `Statement (${triple.predicateId} → ${objectId}): HTTP ${stmtRes.status}`,
+          );
         } else {
           statementsCreated++;
         }

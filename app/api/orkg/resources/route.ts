@@ -9,6 +9,7 @@ import {
 export interface OrkgResourceOption {
   id: string;
   label: string;
+  creator?: string;
 }
 
 /**
@@ -29,6 +30,69 @@ export async function GET(request: NextRequest) {
   }
 
   const limit = limitParam ? parseInt(limitParam, 10) : 500;
+
+  // Use REST API if classId is provided to get all instances and creator info
+  if (classId) {
+    const classIdClean = classId.startsWith("http")
+      ? classId.split("/").pop()
+      : classId;
+
+    try {
+      const restRes = await fetch(
+        `https://orkg.org/api/resources/?include=${classIdClean}&size=${Math.min(limit, 1000)}&sort=created_at,desc`,
+      );
+
+      if (restRes.ok) {
+        const data = await restRes.json();
+        const items = data.content || [];
+
+        const creatorIds = Array.from(
+          new Set(
+            items
+              .map((i: any) => i.created_by)
+              .filter(
+                (id: string) =>
+                  id && id !== "00000000-0000-0000-0000-000000000000",
+              ),
+          ),
+        ) as string[];
+
+        const creatorsMap = new Map<string, string>();
+
+        await Promise.all(
+          creatorIds.map(async (cId) => {
+            try {
+              const cRes = await fetch(
+                `https://orkg.org/api/contributors/${cId}`,
+              );
+
+              if (cRes.ok) {
+                const cData = await cRes.json();
+
+                creatorsMap.set(cId, cData.display_name);
+              }
+            } catch {}
+          }),
+        );
+
+        const resources: OrkgResourceOption[] = items.map((i: any) => ({
+          id: `http://orkg.org/orkg/resource/${i.id}`,
+          label: i.label,
+          creator:
+            creatorsMap.get(i.created_by) ||
+            (i.created_by === "00000000-0000-0000-0000-000000000000"
+              ? "System"
+              : "Unknown"),
+        }));
+
+        return NextResponse.json({ resources });
+      }
+    } catch (e) {
+      console.error("Failed to fetch from REST API", e);
+    }
+  }
+
+  // Fallback to SPARQL if no classId or REST failed
   const query = buildResourcesQuery(predicateId ?? "", {
     classId: classId ?? undefined,
     limit: Number.isNaN(limit) ? 500 : Math.min(limit, 1000),

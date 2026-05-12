@@ -1,22 +1,22 @@
-import type { OrkgValueType } from "@/types/template";
-
 import {
   ORKG_SPARQL_ENDPOINT,
   buildValueTypeQuery,
-  parseValueTypeResult,
+  parseValueTypeMeta,
+  type OrkgPropertyValueMeta,
   type SparqlResult,
 } from "./orkg-queries";
 
 /**
- * Fetches value type (Literal/IRI/Blank) for a predicate from ORKG SPARQL.
+ * Fetches value type (Literal/IRI/Blank) and optional RDF literal datatype
+ * for a predicate from ORKG SPARQL.
  * Use this from server-side code (API routes, server components).
  */
 export async function fetchValueTypeFromOrkg(
   predicateId: string,
-): Promise<OrkgValueType> {
+): Promise<OrkgPropertyValueMeta> {
   const query = buildValueTypeQuery(predicateId);
 
-  if (!query) return "Literal";
+  if (!query) return { valueType: "Literal" };
 
   try {
     const response = await fetch(ORKG_SPARQL_ENDPOINT, {
@@ -28,7 +28,7 @@ export async function fetchValueTypeFromOrkg(
       body: new URLSearchParams({ query }).toString(),
     });
 
-    if (!response.ok) return "Literal";
+    if (!response.ok) return { valueType: "Literal" };
 
     const contentType = response.headers.get("content-type") ?? "";
 
@@ -36,13 +36,13 @@ export async function fetchValueTypeFromOrkg(
       !contentType.includes("application/json") &&
       !contentType.includes("sparql-results+json")
     ) {
-      return "Literal";
+      return { valueType: "Literal" };
     }
 
     const result: SparqlResult = await response.json();
 
-    return parseValueTypeResult(result);
+    return parseValueTypeMeta(result);
   } catch {
-    return "Literal";
+    return { valueType: "Literal" };
   }
 }

@@ -2,19 +2,14 @@
 
 import type {
   CustomBlock,
+  EnrichedSubtemplateProperty,
   EnrichedTemplateMapping,
   SubtemplateProperty,
 } from "@/types/template";
 import type { InputType } from "@/types/template";
 import type { DragEndEvent } from "@dnd-kit/core";
 
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type ChangeEvent,
-} from "react";
+import { useCallback, useRef, useState, type ChangeEvent } from "react";
 import Link from "next/link";
 import { Button } from "@heroui/button";
 import { Switch } from "@heroui/switch";
@@ -57,7 +52,7 @@ export type FormValue =
   | PropertyValue
   | { _?: PropertyValue; [key: string]: FormValue | undefined };
 
-function createEmptyValue(prop: SubtemplateProperty): FormValue {
+function createEmptyValue(prop: EnrichedSubtemplateProperty): FormValue {
   if (
     prop.subtemplate_properties &&
     Object.keys(prop.subtemplate_properties).length > 0
@@ -65,11 +60,17 @@ function createEmptyValue(prop: SubtemplateProperty): FormValue {
     const obj: Record<string, FormValue> = { _: "" };
 
     for (const subId of Object.keys(prop.subtemplate_properties)) {
-      obj[subId] = createEmptyValue(prop.subtemplate_properties[subId]);
+      const sub = prop.subtemplate_properties[subId]!;
+
+      obj[subId] = createEmptyValue(sub as EnrichedSubtemplateProperty);
     }
 
     return obj;
   }
+
+  const leaf = getInputTypeFromValueType(prop.valueType, prop.literalDatatype);
+
+  if (leaf === "checkbox") return false;
 
   return "";
 }
@@ -176,6 +177,7 @@ interface StructureState {
   fieldOverrides: FieldOverrides;
   /** Custom block ids per property path (inside template's nested accordion) */
   nestedCustomBlocks: Record<string, string[]>;
+  removedBuiltinProperties?: string[];
 }
 
 /** User overrides for field label, description, input type, and options (keyed by property path) */
@@ -233,14 +235,19 @@ export function QuestionnaireForm({
   const values = isControlled ? controlledValues : localValues;
 
   const handleValuesChange = useCallback(
-    (updater: (prev: Record<string, FormValue>) => Record<string, FormValue>) => {
+    (
+      updater: (prev: Record<string, FormValue>) => Record<string, FormValue>,
+    ) => {
       if (isControlled) {
         const next = updater(controlledValues);
+
         if (onValuesChange) onValuesChange(next);
       } else {
         setLocalValues((prev) => {
           const next = updater(prev);
+
           if (onValuesChange) onValuesChange(next);
+
           return next;
         });
       }
@@ -257,10 +264,16 @@ export function QuestionnaireForm({
       customBlocks: {},
       fieldOverrides: {},
       nestedCustomBlocks: {},
+      removedBuiltinProperties: [],
     });
 
-  const { orderedBlocks, customBlocks, fieldOverrides, nestedCustomBlocks } =
-    structure;
+  const {
+    orderedBlocks,
+    customBlocks,
+    fieldOverrides,
+    nestedCustomBlocks,
+    removedBuiltinProperties = [],
+  } = structure;
 
   const addBlock = useCallback(
     (
@@ -498,6 +511,19 @@ export function QuestionnaireForm({
     [setStructure, handleValuesChange],
   );
 
+  const removeBuiltinProperty = useCallback(
+    (propertyPath: string) => {
+      setStructure((prev) => ({
+        ...prev,
+        removedBuiltinProperties: [
+          ...(prev.removedBuiltinProperties ?? []),
+          propertyPath,
+        ],
+      }));
+    },
+    [setStructure],
+  );
+
   const reorderSectionChildren = useCallback(
     (sectionId: string, newChildIds: string[]) => {
       setStructure((prev) => {
@@ -551,9 +577,12 @@ export function QuestionnaireForm({
     [values],
   );
 
-  const setValue = useCallback((propertyId: string, value: FormValue) => {
-    handleValuesChange((prev) => ({ ...prev, [propertyId]: value }));
-  }, [handleValuesChange]);
+  const setValue = useCallback(
+    (propertyId: string, value: FormValue) => {
+      handleValuesChange((prev) => ({ ...prev, [propertyId]: value }));
+    },
+    [handleValuesChange],
+  );
 
   const onFieldOverride = useCallback(
     (propertyPath: string, overrides: Partial<FieldOverrides[string]>) => {
@@ -608,20 +637,133 @@ export function QuestionnaireForm({
 
       if (o?.inputType) return o.inputType;
 
-      const enriched = prop as { valueType?: string };
+      const enriched = prop as EnrichedSubtemplateProperty;
 
       return enriched.valueType !== undefined
-        ? getInputTypeFromValueType(enriched.valueType as never)
+        ? getInputTypeFromValueType(
+            enriched.valueType,
+            enriched.literalDatatype,
+          )
         : getInputTypeForProperty(path.split(".").pop() ?? path);
     },
     [fieldOverrides],
   );
 
   const handleExportJson = useCallback(() => {
+    const extractCustomBlock = (id: string): any => {
+      const block = customBlocks[id];
+
+      if (!block) return null;
+
+      const exported: any = { ...block };
+
+      if (block.type === "section" && block.childIds) {
+        exported.children = block.childIds
+          .map(extractCustomBlock)
+          .filter(Boolean);
+      }
+      const val = values[CUSTOM_PREFIX + id];
+
+      if (val !== undefined) {
+        exported.value = val;
+      }
+
+      return exported;
+    };
+
+    const getValueForPath = (path: string): any => {
+      const segments = path.split(".");
+
+      if (!segments.length) return undefined;
+      const rootId = segments[0]!;
+      let current = values[rootId];
+
+      if (current === undefined) return undefined;
+      if (segments.length === 1) return current;
+      let obj: any = current;
+
+      for (let i = 1; i < segments.length; i++) {
+        const key = segments[i]!;
+
+        if (typeof obj !== "object" || obj === null || Array.isArray(obj))
+          return undefined;
+        obj = obj[key];
+      }
+
+      return obj;
+    };
+
+    const extractPropertyData = (
+      path: string,
+      prop: SubtemplateProperty,
+    ): any => {
+      if ((removedBuiltinProperties || []).includes(path)) return null;
+
+      const effectiveProp = getEffectiveProperty(path, prop);
+      const inputType = getInputTypeForPath(path, prop);
+      const val = getValueForPath(path);
+
+      const subProps: Record<string, any> = {};
+
+      if (prop.subtemplate_properties) {
+        for (const [subId, subProp] of Object.entries(
+          prop.subtemplate_properties,
+        )) {
+          const subPath = `${path}.${subId}`;
+          const subData = extractPropertyData(subPath, subProp);
+
+          if (subData) {
+            subProps[subId] = subData;
+          }
+        }
+      }
+
+      const nestedBlocks = nestedCustomBlocks[path] || [];
+      const extractedNestedBlocks = nestedBlocks
+        .map(extractCustomBlock)
+        .filter(Boolean);
+
+      return {
+        id: "id" in prop ? (prop as any).id : path.split(".").pop(),
+        path,
+        label: effectiveProp.label,
+        description: effectiveProp.description,
+        cardinality: effectiveProp.cardinality,
+        class_id: effectiveProp.class_id,
+        inputType,
+        value: flattenForJson(val, prop),
+        raw_value: val,
+        subproperties: Object.keys(subProps).length > 0 ? subProps : undefined,
+        nestedCustomBlocks:
+          extractedNestedBlocks.length > 0 ? extractedNestedBlocks : undefined,
+      };
+    };
+
+    const exportedBlocks = orderedBlocks
+      .map((block) => {
+        if (block.kind === "property") {
+          const prop = mapping[block.id];
+
+          if (!prop) return null;
+
+          return {
+            kind: "property",
+            ...extractPropertyData(block.id, prop),
+          };
+        } else {
+          return {
+            kind: "custom",
+            ...extractCustomBlock(block.id),
+          };
+        }
+      })
+      .filter(Boolean);
+
     const exportData: Record<string, unknown> = {
       templateId,
       templateLabel: label,
       exportedAt: new Date().toISOString(),
+      formStructure: exportedBlocks,
       answers: {},
       customAnswers: {},
     };
@@ -657,7 +799,18 @@ export function QuestionnaireForm({
     a.download = `questionnaire-${templateId}-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     URL.revokeObjectURL(url);
-  }, [templateId, label, mapping, values]);
+  }, [
+    templateId,
+    label,
+    mapping,
+    values,
+    orderedBlocks,
+    customBlocks,
+    removedBuiltinProperties,
+    nestedCustomBlocks,
+    getEffectiveProperty,
+    getInputTypeForPath,
+  ]);
 
   const handleImportJson = useCallback(
     async (event: ChangeEvent<HTMLInputElement>) => {
@@ -1903,6 +2056,7 @@ export function QuestionnaireForm({
                       property={mapping[block.id]!}
                       propertyId={block.id}
                       propertyPath={block.id}
+                      removedBuiltinProperties={removedBuiltinProperties}
                       value={getValue(
                         block.id,
                         !!mapping[block.id]?.subtemplate_properties?.length,
@@ -1914,6 +2068,7 @@ export function QuestionnaireForm({
                       onNestedCustomValueChange={(blockId, v) =>
                         setValue(`__custom_${blockId}`, v)
                       }
+                      onRemoveBuiltinProperty={removeBuiltinProperty}
                       onRemoveChildFromSection={removeChildFromSection}
                       onRemoveNestedBlock={removeNestedBlock}
                       onReorderSectionChildren={reorderSectionChildren}
@@ -2049,7 +2204,19 @@ export function QuestionnaireForm({
                       </div>
                     </SortableBlockWrapper>
                   ) : (
-                    blockContent
+                    <div className="flex w-full items-start justify-between gap-4">
+                      <div className="min-w-0 flex-1">{blockContent}</div>
+                      <Button
+                        className="opacity-0 transition-opacity group-hover/block:opacity-70 hover:opacity-100"
+                        color="danger"
+                        size="sm"
+                        title="Remove this block"
+                        variant="light"
+                        onPress={() => removeBlock(block)}
+                      >
+                        Remove
+                      </Button>
+                    </div>
                   )}
                 </div>
               );

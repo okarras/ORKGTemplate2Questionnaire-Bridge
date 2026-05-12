@@ -37,6 +37,7 @@ import {
   getInputTypeForProperty,
   getInputTypeFromValueType,
 } from "./input-type-utils";
+import { ResourceFilterDialog } from "./ResourceFilterDialog";
 
 type PropertyValue = string | number | boolean | string[];
 
@@ -99,6 +100,8 @@ interface TemplatePropertyRendererProps {
   onRemoveChildFromSection?: (sectionId: string, childId: string) => void;
   onReorderSectionChildren?: (sectionId: string, newChildIds: string[]) => void;
   values?: Record<string, FormValue>;
+  removedBuiltinProperties?: string[];
+  onRemoveBuiltinProperty?: (propertyPath: string) => void;
 }
 
 export function TemplatePropertyRenderer({
@@ -123,6 +126,8 @@ export function TemplatePropertyRenderer({
   onRemoveChildFromSection,
   onReorderSectionChildren,
   values = {},
+  removedBuiltinProperties = [],
+  onRemoveBuiltinProperty,
 }: TemplatePropertyRendererProps) {
   const [internalValue, setInternalValue] = useState<PropertyValue>("");
   const [isEditing, setIsEditing] = useState(false);
@@ -135,6 +140,7 @@ export function TemplatePropertyRenderer({
     min: 1,
     max: 5,
   });
+  const [isFilterDialogOpen, setIsFilterDialogOpen] = useState(false);
   const isControlled = controlledOnChange !== undefined;
 
   const propertyPath = propPath ?? propertyId;
@@ -182,6 +188,7 @@ export function TemplatePropertyRenderer({
     : (property as EnrichedSubtemplateProperty).valueType !== undefined
       ? getInputTypeFromValueType(
           (property as EnrichedSubtemplateProperty).valueType!,
+          (property as EnrichedSubtemplateProperty).literalDatatype,
         )
       : getInputTypeForProperty(propertyId);
 
@@ -191,10 +198,16 @@ export function TemplatePropertyRenderer({
       description: editDescription.trim() || undefined,
     };
 
-    if (inputType === "select" && editSelectOptions.length > 0) {
-      payload.selectOptions = editSelectOptions.filter(
+    if (inputType === "select" || inputType === "resource") {
+      const validOptions = editSelectOptions.filter(
         (o) => o.value.trim() || o.label.trim(),
       );
+
+      if (validOptions.length > 0) {
+        payload.selectOptions = validOptions;
+      } else {
+        payload.selectOptions = [];
+      }
     }
     if (inputType === "scale") {
       payload.scaleConfig = editScaleConfig;
@@ -280,11 +293,16 @@ export function TemplatePropertyRenderer({
                   setEditDescription(
                     o?.description ?? property.description ?? "",
                   );
+                  const currentType = o?.inputType ?? inputType;
+
                   setEditSelectOptions(
-                    o?.selectOptions ?? [
-                      { value: "opt1", label: "Option 1" },
-                      { value: "other", label: "Other/Comments" },
-                    ],
+                    o?.selectOptions ??
+                      (currentType === "resource"
+                        ? []
+                        : [
+                            { value: "option1", label: "Option 1" },
+                            { value: "other", label: "Other/Comments" },
+                          ]),
                   );
                   setEditScaleConfig(
                     o?.scaleConfig ?? {
@@ -421,6 +439,59 @@ export function TemplatePropertyRenderer({
                     </Button>
                   </div>
                 )}
+                {inputType === "resource" && (
+                  <div className="space-y-2 mt-4 pt-2 border-t border-default-100">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium text-default-600">
+                        Restrict allowed resources
+                      </span>
+                      <Button
+                        color="primary"
+                        size="sm"
+                        variant="flat"
+                        onPress={() => setIsFilterDialogOpen(true)}
+                      >
+                        Advanced filter...
+                      </Button>
+                    </div>
+                    <p className="text-xs text-default-500 mb-2">
+                      Leave empty to allow users to search and select any
+                      resource. If you select resources here, users will only be
+                      able to choose from your selection.
+                    </p>
+
+                    {editSelectOptions.length > 0 ? (
+                      <div className="flex flex-wrap gap-2 mb-1 p-2 bg-default-50 border border-default-200 rounded-lg">
+                        {editSelectOptions.map((opt) => (
+                          <div
+                            key={opt.value}
+                            className="text-xs bg-primary/10 text-primary px-2 py-1 rounded-md"
+                          >
+                            {opt.label}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-xs text-default-400 p-2 border border-dashed border-default-200 rounded-lg text-center">
+                        All resources allowed. Click Advanced filter to
+                        restrict.
+                      </div>
+                    )}
+
+                    <ResourceFilterDialog
+                      classId={
+                        (property as EnrichedSubtemplateProperty).class_id
+                      }
+                      initialSelectedIds={editSelectOptions.map((o) => o.value)}
+                      isOpen={isFilterDialogOpen}
+                      propertyId={propertyId}
+                      onClose={() => setIsFilterDialogOpen(false)}
+                      onSave={(selectedOptions) =>
+                        setEditSelectOptions(selectedOptions)
+                      }
+                    />
+                  </div>
+                )}
                 {inputType === "scale" && (
                   <div className="grid grid-cols-2 gap-2">
                     <Input
@@ -534,8 +605,14 @@ export function TemplatePropertyRenderer({
           variant="shadow"
         >
           {[
-            ...Object.entries(property.subtemplate_properties!).map(
-              ([subPropId, subProp]) => (
+            ...Object.entries(property.subtemplate_properties!)
+              .filter(
+                ([subPropId]) =>
+                  !removedBuiltinProperties.includes(
+                    `${propertyPath}.${subPropId}`,
+                  ),
+              )
+              .map(([subPropId, subProp]) => (
                 <AccordionItem
                   key={subPropId}
                   aria-label={
@@ -545,13 +622,42 @@ export function TemplatePropertyRenderer({
                   classNames={{
                     title: "text-default-800 font-medium",
                     trigger:
-                      "py-3 px-4 data-[hover=true]:bg-primary/5 data-[open=true]:bg-default-50 rounded-xl min-h-0",
+                      "group py-3 px-4 data-[hover=true]:bg-primary/5 data-[open=true]:bg-default-50 rounded-xl min-h-0",
                     content: "px-4 pb-4",
                   }}
                   subtitle={subProp.cardinality}
                   title={
-                    fieldOverrides[`${propertyPath}.${subPropId}`]?.label ??
-                    subProp.label
+                    <div className="flex w-full items-center justify-between gap-4 pr-2">
+                      <span>
+                        {fieldOverrides[`${propertyPath}.${subPropId}`]
+                          ?.label ?? subProp.label}
+                      </span>
+                      {onRemoveBuiltinProperty && (
+                        <div
+                          role="button"
+                          tabIndex={0}
+                          className="opacity-0 transition-opacity group-hover:opacity-70 hover:opacity-100 text-danger bg-transparent hover:bg-danger/10 active:bg-danger/20 px-3 py-1 rounded-md text-sm font-medium cursor-pointer"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            onRemoveBuiltinProperty(
+                              `${propertyPath}.${subPropId}`,
+                            );
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              onRemoveBuiltinProperty(
+                                `${propertyPath}.${subPropId}`,
+                              );
+                            }
+                          }}
+                        >
+                          Remove
+                        </div>
+                      )}
+                    </div>
                   }
                 >
                   <div className="pb-2">
@@ -570,6 +676,7 @@ export function TemplatePropertyRenderer({
                       property={subProp}
                       propertyId={subPropId}
                       propertyPath={`${propertyPath}.${subPropId}`}
+                      removedBuiltinProperties={removedBuiltinProperties}
                       value={
                         typeof controlledValue === "object" &&
                         controlledValue !== null &&
@@ -584,6 +691,7 @@ export function TemplatePropertyRenderer({
                       onAddNestedBlock={onAddNestedBlock}
                       onFieldOverride={onFieldOverride}
                       onNestedCustomValueChange={onNestedCustomValueChange}
+                      onRemoveBuiltinProperty={onRemoveBuiltinProperty}
                       onRemoveChildFromSection={onRemoveChildFromSection}
                       onRemoveNestedBlock={onRemoveNestedBlock}
                       onReorderSectionChildren={onReorderSectionChildren}
@@ -613,8 +721,7 @@ export function TemplatePropertyRenderer({
                     />
                   </div>
                 </AccordionItem>
-              ),
-            ),
+              )),
             ...nestedCustomBlockIds.map((blockId) => {
               const block = customBlocks[blockId];
 

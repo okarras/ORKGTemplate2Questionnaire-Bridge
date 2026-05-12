@@ -166,17 +166,18 @@ export function DynamicFieldInput({
               ? new Set(
                   (Array.isArray(value) ? value : []).map(
                     (v) =>
-                      selectOptions.find(
-                        (o) => o.value === v || o.label === v
-                      )?.value ?? String(v)
-                  )
+                      selectOptions.find((o) => o.value === v || o.label === v)
+                        ?.value ?? String(v),
+                  ),
                 )
               : (() => {
                   const val = typeof value === "string" ? value : "";
+
                   if (!val) return new Set();
                   const match = selectOptions.find(
-                    (o) => o.value === val || o.label === val
+                    (o) => o.value === val || o.label === val,
                   );
+
                   return new Set([match ? match.value : val]);
                 })()
           }
@@ -281,11 +282,11 @@ export function DynamicFieldInput({
       return (
         <ResourceAutoselect
           classId={classId}
-          createLink={createLink}
           label={label}
           multiselect={multiselect}
           placeholder={placeholder}
           propertyId={propertyId}
+          selectOptions={selectOptions}
           value={value}
           onChange={onChange}
         />

@@ -74,6 +74,7 @@ export function TemplateSelector() {
   useEffect(() => {
     try {
       const raw = sessionStorage.getItem(PENDING_TEMPLATE_KEY);
+
       if (!raw) return;
 
       const payload = JSON.parse(raw) as {
@@ -88,6 +89,7 @@ export function TemplateSelector() {
 
       if (!templateId || !isFresh || attempts >= 2) {
         sessionStorage.removeItem(PENDING_TEMPLATE_KEY);
+
         return;
       }
 

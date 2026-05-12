@@ -4,18 +4,17 @@ import { useState, useEffect } from "react";
 import { Autocomplete, AutocompleteItem } from "@heroui/autocomplete";
 import { Spinner } from "@heroui/spinner";
 import { Link } from "@heroui/link";
+import { Chip } from "@heroui/chip";
 
 import { FieldLabel } from "./FieldLabel";
 
-import {
-  getOrkgResourceLinkFromIri,
-  getOrkgCreateResourceLink,
-} from "@/lib/orkg-links";
+import { getOrkgResourceLinkFromIri, getOrkgCreateResourceLink } from "@/lib/orkg-links";
 import { ResourceLabelCache } from "@/lib/resource-label-cache";
 
 interface OrkgResourceOption {
   id: string;
   label: string;
+  creator?: string;
 }
 
 type ResourceValue = string | number | boolean | string[];
@@ -29,8 +28,8 @@ interface ResourceAutoselectProps {
   /** When true, allows selecting multiple resources (one-to-many cardinality) */
   multiselect?: boolean;
   classId?: string;
-  /** Link to create new ORKG resource (e.g. from template mapping) */
-  createLink?: string;
+  /** Options to filter the allowed resources */
+  selectOptions?: { value: string; label: string }[];
 }
 
 export function ResourceAutoselect({
@@ -41,12 +40,11 @@ export function ResourceAutoselect({
   onChange,
   multiselect = false,
   classId,
-  createLink,
+  selectOptions,
 }: ResourceAutoselectProps) {
-  const createResourceUrl =
-    createLink ?? (classId ? getOrkgCreateResourceLink(classId) : null);
   const [resources, setResources] = useState<OrkgResourceOption[]>([]);
   const [loading, setLoading] = useState(true);
+  const [inputValue, setInputValue] = useState("");
 
   useEffect(() => {
     const hasPredicate = propertyId.match(/^P\d+$/);
@@ -69,22 +67,48 @@ export function ResourceAutoselect({
       .then((res) => res.json())
       .then((data: { resources?: OrkgResourceOption[] }) => {
         const resList = data.resources ?? [];
+
         resList.forEach((r) => {
           ResourceLabelCache.set(r.id, r.label);
           ResourceLabelCache.set(r.label, r.id);
           const shortId = r.id.split("/").pop();
+
           if (shortId) {
             ResourceLabelCache.set(shortId, r.label);
             ResourceLabelCache.set(r.label, shortId);
           }
         });
-        setResources(resList);
+
+        // Filter resources if selectOptions are provided and not DEFAULT_SELECT_OPTIONS
+        const isDefaultOptions =
+          selectOptions &&
+          selectOptions.length === 4 &&
+          selectOptions[0].value === "option1";
+
+        if (selectOptions && selectOptions.length > 0 && !isDefaultOptions) {
+          const allowedIds = new Set(selectOptions.map((o) => o.value));
+
+          setResources(
+            resList.filter(
+              (r) =>
+                allowedIds.has(r.id) ||
+                allowedIds.has(r.id.split("/").pop() || ""),
+            ),
+          );
+        } else {
+          setResources(resList);
+        }
       })
       .catch(() => setResources([]))
       .finally(() => setLoading(false));
   }, [propertyId, classId]);
 
   const id = `field-${propertyId}`;
+  const selectedKeys = Array.isArray(value)
+    ? value.map(String)
+    : value
+      ? [String(value)]
+      : [];
 
   if (loading) {
     return (
@@ -98,58 +122,102 @@ export function ResourceAutoselect({
             </span>
           </div>
         </div>
-        {createResourceUrl && (
-          <Link
-            isExternal
-            aria-label="Create new resource in ORKG"
-            className="text-primary w-fit"
-            href={createResourceUrl}
-            size="sm"
-          >
-            Create new in ORKG
-          </Link>
-        )}
+        <Link
+          isExternal
+          href={classId ? getOrkgCreateResourceLink(classId) || "https://orkg.org/add-resource" : "https://orkg.org/add-resource"}
+          aria-label="Create new resource in ORKG"
+          className="text-primary w-fit"
+          size="sm"
+        >
+          Create new in ORKG
+        </Link>
       </div>
     );
   }
 
   return (
     <div className="flex flex-col gap-1.5">
+      <FieldLabel classId={classId} label={label} propertyId={propertyId} />
+
+      {multiselect && selectedKeys.length > 0 && (
+        <div className="flex flex-wrap gap-2 mb-1">
+          {selectedKeys.map((key) => {
+            const displayLabel =
+              ResourceLabelCache.get(key) || key.split("/").pop() || key;
+
+            return (
+              <Chip
+                key={key}
+                color="primary"
+                variant="flat"
+                onClose={() => {
+                  onChange(selectedKeys.filter((k) => k !== key));
+                }}
+              >
+                {displayLabel}
+              </Chip>
+            );
+          })}
+        </div>
+      )}
+
       <Autocomplete
+        aria-label={label}
         className="w-full"
         id={id}
-        isDisabled={resources.length === 0}
-        label={
-          <FieldLabel classId={classId} label={label} propertyId={propertyId} />
-        }
-        labelPlacement="outside"
+        inputValue={inputValue}
+        isDisabled={false}
         placeholder={
           placeholder ??
           (multiselect
             ? "Search and select one or more..."
             : "Search and select...")
         }
-        selectedKey={(() => {
-          const current = Array.isArray(value) ? value[0] : value;
-          if (typeof current !== "string" || !current) return undefined;
+        selectedKey={
+          multiselect
+            ? null
+            : (() => {
+                const current = selectedKeys[0];
 
-          if (resources.some((r) => r.id === current)) return current;
-          const match = resources.find(
-            (r) =>
-              r.id.split("/").pop() === current ||
-              r.label === current ||
-              r.id.split("/").pop() === current.split("/").pop()
-          );
-          return match ? match.id : current;
-        })()}
+                if (!current) return undefined;
+
+                if (resources.some((r) => r.id === current)) return current;
+                const match = resources.find(
+                  (r) =>
+                    r.id.split("/").pop() === current ||
+                    r.label === current ||
+                    r.id.split("/").pop() === current.split("/").pop(),
+                );
+
+                return match ? match.id : current;
+              })()
+        }
         variant="bordered"
+        onInputChange={(val) => {
+          setInputValue(val);
+          if (!val && !multiselect) {
+            onChange("");
+          }
+        }}
         onSelectionChange={(key) => {
-          const selected = key ? String(key) : "";
+          if (!key) {
+            if (!multiselect) onChange("");
+
+            return;
+          }
+
+          const selected = String(key);
 
           if (multiselect) {
-            onChange(selected ? [selected] : []);
+            if (!selectedKeys.includes(selected)) {
+              onChange([...selectedKeys, selected]);
+            }
+            setInputValue("");
           } else {
             onChange(selected);
+            setInputValue(
+              resources.find((r) => r.id === selected)?.label || selected,
+            );
           }
         }}
       >
@@ -160,6 +228,7 @@ export function ResourceAutoselect({
           return (
             <AutocompleteItem
               key={r.id}
+              description={r.creator ? `Created by: ${r.creator}` : undefined}
               endContent={
                 orkgUrl ? (
                   <Link
@@ -196,17 +265,15 @@ export function ResourceAutoselect({
           );
         })}
       </Autocomplete>
-      {createResourceUrl && (
-        <Link
-          isExternal
-          aria-label="Create new resource in ORKG"
-          className="text-primary w-fit"
-          href={createResourceUrl}
-          size="sm"
-        >
-          Create new in ORKG
-        </Link>
-      )}
+      <Link
+        isExternal
+        href={classId ? getOrkgCreateResourceLink(classId) || "https://orkg.org/add-resource" : "https://orkg.org/add-resource"}
+        aria-label="Create new resource in ORKG"
+        className="text-primary w-fit"
+        size="sm"
+      >
+        Create new in ORKG
+      </Link>
     </div>
   );
 }
