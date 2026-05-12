@@ -4,16 +4,31 @@ import type { EnrichedTemplateMapping } from "@/types/template";
 import type { FormValue } from "./QuestionnaireForm";
 import type { ScidQuestQuestionnaireTemplate } from "@/lib/orkg-to-scidquest-adapter";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+} from "react";
 import { Button } from "@heroui/button";
 
 import { QuestionnaireForm } from "./QuestionnaireForm";
+import { QuestionnaireOrkgPreview } from "./QuestionnaireOrkgPreview";
 import { QuestionnaireViewLoader } from "./QuestionnaireViewLoader";
 import { OrkgSubmitModal } from "./OrkgSubmitModal";
+import {
+  loadQuestionnaireDraft,
+  mergeLoadedFormValues,
+  reconcileStructureDraft,
+  type QuestionnaireStructureDraft,
+} from "./questionnaire-draft-storage";
 
 import { ResourceLabelCache } from "@/lib/resource-label-cache";
 
-type Mode = "form" | "scidquest";
+type Mode = "form" | "scidquest" | "orkgPreview";
 const PENDING_TEMPLATE_KEY = "pending_template_navigation";
 
 function hasSubProperties(prop: {
@@ -201,24 +216,143 @@ function convertScidQuestAnswerToFormValue(
   return next;
 }
 
+const ANSWER_HISTORY_MAX = 50;
+
+type AnswerHistState = {
+  values: Record<string, FormValue>;
+  past: Record<string, FormValue>[];
+  future: Record<string, FormValue>[];
+};
+
+function formValuesEqual(
+  a: Record<string, FormValue>,
+  b: Record<string, FormValue>,
+) {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+type AnswerHistAction =
+  | { type: "commit"; next: Record<string, FormValue> }
+  | { type: "undo" }
+  | { type: "redo" }
+  | { type: "hydrate"; next: Record<string, FormValue> };
+
+function answerHistoryReducer(
+  state: AnswerHistState,
+  action: AnswerHistAction,
+): AnswerHistState {
+  switch (action.type) {
+    case "commit": {
+      if (formValuesEqual(state.values, action.next)) return state;
+
+      return {
+        values: action.next,
+        past: [
+          ...state.past.slice(-(ANSWER_HISTORY_MAX - 1)),
+          structuredClone(state.values),
+        ],
+        future: [],
+      };
+    }
+    case "undo": {
+      if (state.past.length === 0) return state;
+      const prev = state.past[state.past.length - 1]!;
+
+      return {
+        values: structuredClone(prev),
+        past: state.past.slice(0, -1),
+        future: [
+          ...state.future.slice(-(ANSWER_HISTORY_MAX - 1)),
+          structuredClone(state.values),
+        ],
+      };
+    }
+    case "redo": {
+      if (state.future.length === 0) return state;
+      const nextVal = state.future[state.future.length - 1]!;
+
+      return {
+        values: structuredClone(nextVal),
+        future: state.future.slice(0, -1),
+        past: [
+          ...state.past.slice(-(ANSWER_HISTORY_MAX - 1)),
+          structuredClone(state.values),
+        ],
+      };
+    }
+    case "hydrate": {
+      return {
+        values: structuredClone(action.next),
+        past: [],
+        future: [],
+      };
+    }
+    default:
+      return state;
+  }
+}
+
 export function QuestionnairePageModeSwitcher({
   templateId,
   targetClassId,
+  targetClassLabel,
   label,
   mapping,
   scidQuestTemplate,
 }: {
   templateId: string;
   targetClassId?: string;
+  targetClassLabel?: string;
   label: string;
   mapping: EnrichedTemplateMapping;
   scidQuestTemplate: ScidQuestQuestionnaireTemplate;
 }) {
   const [mode, setMode] = useState<Mode>("form");
   const [showSubmitModal, setShowSubmitModal] = useState(false);
-  const [sharedValues, setSharedValues] = useState<Record<string, FormValue>>(
-    () => buildInitialFormValues(mapping),
+  const [previewStructure, setPreviewStructure] =
+    useState<QuestionnaireStructureDraft | null>(null);
+
+  const [answerHist, dispatchAnswer] = useReducer(
+    answerHistoryReducer,
+    undefined,
+    (): AnswerHistState => ({
+      values: buildInitialFormValues(mapping),
+      past: [],
+      future: [],
+    }),
   );
+
+  useLayoutEffect(() => {
+    const d = loadQuestionnaireDraft(templateId);
+
+    if (d?.structure) {
+      setPreviewStructure(reconcileStructureDraft(d.structure, mapping));
+    }
+
+    if (d?.values) {
+      dispatchAnswer({
+        type: "hydrate",
+        next: mergeLoadedFormValues(mapping, d.values),
+      });
+    }
+  }, [templateId, mapping]);
+
+  const sharedValues = answerHist.values;
+  const answerValuesRef = useRef(sharedValues);
+
+  answerValuesRef.current = sharedValues;
+
+  const commitSharedValues = useCallback((next: Record<string, FormValue>) => {
+    dispatchAnswer({ type: "commit", next });
+  }, []);
+
+  const undoAnswers = useCallback(() => {
+    dispatchAnswer({ type: "undo" });
+  }, []);
+
+  const redoAnswers = useCallback(() => {
+    dispatchAnswer({ type: "redo" });
+  }, []);
 
   useEffect(() => {
     try {
@@ -241,28 +375,22 @@ export function QuestionnairePageModeSwitcher({
 
   const handleScidQuestAnswersChange = useCallback(
     (answers: Record<string, unknown>) => {
-      setSharedValues((prev) => {
-        let hasChanges = false;
-        const next = { ...prev };
+      const prev = answerValuesRef.current;
+      const next = { ...prev };
+      let hasChanges = false;
 
-        for (const [propId, prop] of Object.entries(mapping)) {
-          if (!(propId in answers)) continue;
-          const newVal = convertScidQuestAnswerToFormValue(
-            answers[propId],
-            prop,
-          );
+      for (const [propId, prop] of Object.entries(mapping)) {
+        if (!(propId in answers)) continue;
+        const newVal = convertScidQuestAnswerToFormValue(answers[propId], prop);
 
-          if (JSON.stringify(prev[propId]) !== JSON.stringify(newVal)) {
-            console.log("SYNC LOOP DEBUG for", propId, ":");
-            console.log("  PREV:", JSON.stringify(prev[propId]));
-            console.log("  NEW:", JSON.stringify(newVal));
-            next[propId] = newVal;
-            hasChanges = true;
-          }
+        if (JSON.stringify(prev[propId]) !== JSON.stringify(newVal)) {
+          next[propId] = newVal;
+          hasChanges = true;
         }
+      }
 
-        return hasChanges ? next : prev;
-      });
+      if (!hasChanges) return;
+      dispatchAnswer({ type: "commit", next });
     },
     [mapping],
   );
@@ -294,6 +422,14 @@ export function QuestionnairePageModeSwitcher({
         >
           ScidQuest mode
         </Button>
+        <Button
+          color={mode === "orkgPreview" ? "danger" : "default"}
+          size="sm"
+          variant={mode === "orkgPreview" ? "solid" : "flat"}
+          onPress={() => setMode("orkgPreview")}
+        >
+          ORKG preview
+        </Button>
       </div>
 
       <div
@@ -301,15 +437,25 @@ export function QuestionnairePageModeSwitcher({
         className={mode === "form" ? "block" : "hidden"}
       >
         <QuestionnaireForm
+          answerHistory={{
+            canRedo: answerHist.future.length > 0,
+            canUndo: answerHist.past.length > 0,
+            onRedo: redoAnswers,
+            onUndo: undoAnswers,
+          }}
           backHref="/"
           initialEditMode={false}
           label={label}
           mapping={mapping}
+          persistDraftToTemplateId={templateId}
           showSubmitButton={false}
           targetClassId={targetClassId}
           templateId={templateId}
           values={sharedValues}
-          onValuesChange={setSharedValues}
+          onDraftPersist={(d) =>
+            setPreviewStructure(reconcileStructureDraft(d.structure, mapping))
+          }
+          onValuesChange={commitSharedValues}
         />
       </div>
       <div
@@ -325,6 +471,20 @@ export function QuestionnairePageModeSwitcher({
           onAnswersChange={
             mode === "scidquest" ? handleScidQuestAnswersChange : undefined
           }
+        />
+      </div>
+      <div
+        aria-hidden={mode !== "orkgPreview"}
+        className={mode === "orkgPreview" ? "block" : "hidden"}
+      >
+        <QuestionnaireOrkgPreview
+          label={label}
+          mapping={mapping}
+          structure={previewStructure}
+          targetClassId={targetClassId}
+          targetClassLabel={targetClassLabel}
+          templateId={templateId}
+          values={sharedValues}
         />
       </div>
 

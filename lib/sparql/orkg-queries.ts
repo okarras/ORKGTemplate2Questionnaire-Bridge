@@ -9,6 +9,8 @@ PREFIX orkgr: <http://orkg.org/orkg/resource/>
 /**
  * Builds SPARQL query to detect value type (Literal/IRI/Blank) for a given predicate.
  * Only predicates matching /^P\d+$/ map to orkgp:P{id}. Others return null (skip query).
+ * Uses GROUP BY with COUNT so the dominant literal datatype reflects actual usage volume
+ * (avoids misclassifying when DISTINCT returned one row per datatype with equal weight).
  */
 export function buildValueTypeQuery(predicateId: string): string | null {
   const match = predicateId.match(/^P(\d+)$/);
@@ -19,7 +21,7 @@ export function buildValueTypeQuery(predicateId: string): string | null {
 
   return `
 ${ORKG_PREFIXES}
-SELECT DISTINCT ?oType ?litDt WHERE {
+SELECT ?oType ?litDt (COUNT(*) AS ?cnt) WHERE {
   ?s ${predicateVar} ?o .
   BIND(
     IF(isLiteral(?o), "Literal",
@@ -30,6 +32,8 @@ SELECT DISTINCT ?oType ?litDt WHERE {
   )
   BIND(IF(isLiteral(?o), STR(DATATYPE(?o)), "") AS ?litDt)
 }
+GROUP BY ?oType ?litDt
+ORDER BY DESC(?cnt)
 LIMIT 100
 `;
 }
@@ -57,7 +61,7 @@ export function buildValueTypeQueryWithContext(
 
   return `
 ${ORKG_PREFIXES}
-SELECT DISTINCT ?oType ?litDt WHERE {
+SELECT ?oType ?litDt (COUNT(*) AS ?cnt) WHERE {
   ${filter}
   ?s ${pred} ?o .
   BIND(
@@ -69,7 +73,9 @@ SELECT DISTINCT ?oType ?litDt WHERE {
   )
   BIND(IF(isLiteral(?o), STR(DATATYPE(?o)), "") AS ?litDt)
 }
-LIMIT 10
+GROUP BY ?oType ?litDt
+ORDER BY DESC(?cnt)
+LIMIT 50
 `;
 }
 
@@ -143,16 +149,29 @@ export interface SparqlResult {
     bindings: Array<{
       oType?: { value: string };
       litDt?: { value: string };
+      /** SPARQL COUNT(*) — present when queries use GROUP BY */
+      cnt?: { value: string };
       o?: { value: string };
       oLabel?: { value: string };
     }>;
   };
 }
 
+function bindingCountWeight(b: { cnt?: { value: string } }): number {
+  const raw = b.cnt?.value;
+
+  if (raw === undefined || raw === "") return 1;
+
+  const n = Number.parseInt(raw, 10);
+
+  return Number.isFinite(n) && n > 0 ? n : 1;
+}
+
 /**
  * Parse SPARQL JSON result and pick a dominant object kind for the predicate.
- * Uses row counts from DISTINCT (?oType ?litDt) bindings so a predicate that is
- * mostly literals (e.g. booleans) is not forced to "IRI" because a rare IRI row exists.
+ * When bindings include ?cnt (GROUP BY queries), weights by triple counts so
+ * a rare datatype (e.g. a few xsd:integer) does not override a common one (xsd:string).
+ * Otherwise each binding row counts as 1 (legacy DISTINCT results).
  * Tie-break order when counts are equal: IRI, Literal, Blank node, Unknown.
  */
 export function parseValueTypeResult(result: SparqlResult): OrkgValueType {
@@ -167,15 +186,13 @@ export function parseValueTypeResult(result: SparqlResult): OrkgValueType {
   for (const b of bindings) {
     const t = b.oType?.value as OrkgValueType | undefined;
 
-    if (t && t in counts) counts[t] += 1;
+    if (!t || !(t in counts)) continue;
+    const w = bindingCountWeight(b);
+
+    counts[t] += w;
   }
 
-  const rank: OrkgValueType[] = [
-    "IRI",
-    "Literal",
-    "Blank node",
-    "Unknown",
-  ];
+  const rank: OrkgValueType[] = ["IRI", "Literal", "Blank node", "Unknown"];
   let best: OrkgValueType = "Unknown";
   let bestCount = -1;
 
@@ -201,11 +218,7 @@ function literalDatatypePreference(uri: string): number {
     u.endsWith("#unsignedint")
   )
     return 85;
-  if (
-    u.endsWith("#decimal") ||
-    u.endsWith("#double") ||
-    u.endsWith("#float")
-  )
+  if (u.endsWith("#decimal") || u.endsWith("#double") || u.endsWith("#float"))
     return 80;
   if (u.endsWith("#date") && !u.includes("datetime")) return 70;
   if (u.endsWith("#datetime")) return 65;
@@ -224,7 +237,9 @@ export interface OrkgPropertyValueMeta {
  * Like {@link parseValueTypeResult} but when the dominant type is Literal,
  * picks a representative RDF datatype IRI from literal rows (SPARQL `?litDt`).
  */
-export function parseValueTypeMeta(result: SparqlResult): OrkgPropertyValueMeta {
+export function parseValueTypeMeta(
+  result: SparqlResult,
+): OrkgPropertyValueMeta {
   const valueType = parseValueTypeResult(result);
 
   if (valueType !== "Literal") {
@@ -232,19 +247,20 @@ export function parseValueTypeMeta(result: SparqlResult): OrkgPropertyValueMeta 
   }
 
   const bindings = result?.results?.bindings ?? [];
-  const candidates = bindings
-    .filter((b) => b.oType?.value === "Literal")
-    .map((b) => b.litDt?.value?.trim())
-    .filter((v): v is string => Boolean(v));
-
-  if (candidates.length === 0) {
-    return { valueType };
-  }
-
+  const literalRows = bindings.filter((b) => b.oType?.value === "Literal");
   const counts = new Map<string, number>();
 
-  for (const c of candidates) {
-    counts.set(c, (counts.get(c) ?? 0) + 1);
+  for (const b of literalRows) {
+    const c = b.litDt?.value?.trim();
+
+    if (!c) continue;
+    const w = bindingCountWeight(b);
+
+    counts.set(c, (counts.get(c) ?? 0) + w);
+  }
+
+  if (counts.size === 0) {
+    return { valueType };
   }
 
   let literalDatatype: string | undefined;

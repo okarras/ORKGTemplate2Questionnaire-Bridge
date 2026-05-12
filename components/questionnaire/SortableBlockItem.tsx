@@ -30,9 +30,12 @@ export function useSortableBlock(id: string) {
 export function SortableBlockWrapper({
   id,
   children,
+  /** When true, block stays in the sortable list but cannot be dragged (e.g. fill mode). */
+  disabled = false,
 }: {
   id: string;
   children: React.ReactNode;
+  disabled?: boolean;
 }) {
   const {
     attributes,
@@ -41,7 +44,7 @@ export function SortableBlockWrapper({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id });
+  } = useSortable({ id, disabled });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -56,10 +59,15 @@ export function SortableBlockWrapper({
     >
       <div className="flex items-start gap-2">
         <div
-          {...attributes}
-          {...listeners}
-          className="mt-0.5 cursor-grab active:cursor-grabbing touch-none rounded-lg p-2 text-default-500 transition-colors hover:bg-default-200 hover:text-default-700"
-          title="Drag to reorder"
+          {...(disabled ? {} : attributes)}
+          {...(disabled ? {} : listeners)}
+          aria-hidden={disabled}
+          className={
+            disabled
+              ? "mt-0.5 shrink-0 touch-none rounded-lg p-2 opacity-0 pointer-events-none"
+              : "mt-0.5 cursor-grab active:cursor-grabbing touch-none rounded-lg p-2 text-default-500 transition-colors hover:bg-default-200 hover:text-default-700"
+          }
+          title={disabled ? undefined : "Drag to reorder"}
         >
           <svg
             fill="none"

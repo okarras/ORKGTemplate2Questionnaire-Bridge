@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Autocomplete, AutocompleteItem } from "@heroui/autocomplete";
 import { Spinner } from "@heroui/spinner";
 import { Link } from "@heroui/link";
@@ -8,7 +8,16 @@ import { Chip } from "@heroui/chip";
 
 import { FieldLabel } from "./FieldLabel";
 
-import { getOrkgResourceLinkFromIri, getOrkgCreateResourceLink } from "@/lib/orkg-links";
+import {
+  getOrkgResourceLinkFromIri,
+  getOrkgCreateResourceLink,
+} from "@/lib/orkg-links";
+import {
+  dedupeOrkgResourceIris,
+  normalizeOrkgResourceIri,
+  orkgResourceIriTail,
+  resourceIrisEquivalent,
+} from "@/lib/orkg-resource-ids";
 import { ResourceLabelCache } from "@/lib/resource-label-cache";
 
 interface OrkgResourceOption {
@@ -45,6 +54,20 @@ export function ResourceAutoselect({
   const [resources, setResources] = useState<OrkgResourceOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [inputValue, setInputValue] = useState("");
+  const [searchHits, setSearchHits] = useState<OrkgResourceOption[]>([]);
+  const [resolvedLabels, setResolvedLabels] = useState<Record<string, string>>(
+    {},
+  );
+  const resolveAttemptedRef = useRef<Set<string>>(new Set());
+  const searchAbortRef = useRef<AbortController | null>(null);
+
+  const selectedKeys = useMemo(
+    () =>
+      dedupeOrkgResourceIris(
+        Array.isArray(value) ? value.map(String) : value ? [String(value)] : [],
+      ),
+    [value],
+  );
 
   useEffect(() => {
     const hasPredicate = propertyId.match(/^P\d+$/);
@@ -60,7 +83,7 @@ export function ResourceAutoselect({
 
     if (hasPredicate) params.set("predicateId", propertyId);
     if (classId) params.set("classId", classId);
-    params.set("limit", "500");
+    params.set("limit", multiselect ? "4000" : "500");
 
     setLoading(true);
     fetch(`/api/orkg/resources?${params.toString()}`)
@@ -69,8 +92,11 @@ export function ResourceAutoselect({
         const resList = data.resources ?? [];
 
         resList.forEach((r) => {
+          const canon = normalizeOrkgResourceIri(r.id);
+
           ResourceLabelCache.set(r.id, r.label);
-          ResourceLabelCache.set(r.label, r.id);
+          ResourceLabelCache.set(canon, r.label);
+          ResourceLabelCache.set(r.label, canon);
           const shortId = r.id.split("/").pop();
 
           if (shortId) {
@@ -79,21 +105,29 @@ export function ResourceAutoselect({
           }
         });
 
-        // Filter resources if selectOptions are provided and not DEFAULT_SELECT_OPTIONS
         const isDefaultOptions =
           selectOptions &&
           selectOptions.length === 4 &&
           selectOptions[0].value === "option1";
 
         if (selectOptions && selectOptions.length > 0 && !isDefaultOptions) {
-          const allowedIds = new Set(selectOptions.map((o) => o.value));
+          const allowedIds = new Set(
+            selectOptions.flatMap((o) => [
+              normalizeOrkgResourceIri(o.value),
+              o.value,
+            ]),
+          );
 
           setResources(
-            resList.filter(
-              (r) =>
+            resList.filter((r) => {
+              const c = normalizeOrkgResourceIri(r.id);
+
+              return (
+                allowedIds.has(c) ||
                 allowedIds.has(r.id) ||
-                allowedIds.has(r.id.split("/").pop() || ""),
-            ),
+                allowedIds.has(r.id.split("/").pop() || "")
+              );
+            }),
           );
         } else {
           setResources(resList);
@@ -101,14 +135,211 @@ export function ResourceAutoselect({
       })
       .catch(() => setResources([]))
       .finally(() => setLoading(false));
+  }, [propertyId, classId, multiselect, selectOptions]);
+
+  /** Debounced ORKG label search while typing (multiselect only; single-select shows selected label in input). */
+  useEffect(() => {
+    if (!multiselect) {
+      searchAbortRef.current?.abort();
+      setSearchHits([]);
+
+      return;
+    }
+
+    const q = inputValue.trim();
+
+    if (q.length < 2) {
+      searchAbortRef.current?.abort();
+      setSearchHits([]);
+
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      searchAbortRef.current?.abort();
+      const ac = new AbortController();
+
+      searchAbortRef.current = ac;
+
+      const params = new URLSearchParams();
+
+      params.set("q", q);
+      params.set("limit", "40");
+      if (classId) params.set("classId", classId);
+
+      fetch(`/api/orkg/resources?${params.toString()}`, { signal: ac.signal })
+        .then((res) => res.json())
+        .then((data: { resources?: OrkgResourceOption[] }) => {
+          let list = data.resources ?? [];
+
+          const isDefaultOptions =
+            selectOptions &&
+            selectOptions.length === 4 &&
+            selectOptions[0].value === "option1";
+
+          if (selectOptions && selectOptions.length > 0 && !isDefaultOptions) {
+            const allowedIds = new Set(
+              selectOptions.flatMap((o) => [
+                normalizeOrkgResourceIri(o.value),
+                o.value,
+              ]),
+            );
+
+            list = list.filter((r) => {
+              const c = normalizeOrkgResourceIri(r.id);
+
+              return (
+                allowedIds.has(c) ||
+                allowedIds.has(r.id) ||
+                allowedIds.has(r.id.split("/").pop() || "")
+              );
+            });
+          }
+
+          list.forEach((r) => {
+            const canon = normalizeOrkgResourceIri(r.id);
+
+            ResourceLabelCache.set(r.id, r.label);
+            ResourceLabelCache.set(canon, r.label);
+            const shortId = r.id.split("/").pop();
+
+            if (shortId) {
+              ResourceLabelCache.set(shortId, r.label);
+              ResourceLabelCache.set(r.label, shortId);
+            }
+          });
+
+          setSearchHits(
+            list.map((r) => ({
+              ...r,
+              id: normalizeOrkgResourceIri(r.id),
+            })),
+          );
+        })
+        .catch((err: unknown) => {
+          if (err instanceof Error && err.name === "AbortError") return;
+          setSearchHits([]);
+        });
+    }, 320);
+
+    return () => {
+      window.clearTimeout(timer);
+      searchAbortRef.current?.abort();
+    };
+  }, [inputValue, classId, selectOptions, multiselect]);
+
+  useEffect(() => {
+    resolveAttemptedRef.current.clear();
   }, [propertyId, classId]);
 
+  useEffect(() => {
+    if (loading || selectedKeys.length === 0) return;
+
+    const missingTails = selectedKeys
+      .filter((k) => {
+        const canon = normalizeOrkgResourceIri(k);
+
+        return (
+          !resources.some((r) => resourceIrisEquivalent(r.id, k)) &&
+          !resolvedLabels[canon] &&
+          !resolveAttemptedRef.current.has(orkgResourceIriTail(canon))
+        );
+      })
+      .map((k) => orkgResourceIriTail(k));
+
+    if (missingTails.length === 0) return;
+
+    for (const t of missingTails) {
+      resolveAttemptedRef.current.add(t);
+    }
+
+    const params = new URLSearchParams();
+
+    params.set("ids", Array.from(new Set(missingTails)).join(","));
+
+    fetch(`/api/orkg/resources/resolve?${params.toString()}`)
+      .then((res) => res.json())
+      .then((data: { labels?: Record<string, string> }) => {
+        const labels = data.labels ?? {};
+        const next: Record<string, string> = {};
+
+        for (const [k, v] of Object.entries(labels)) {
+          if (!v) continue;
+          const canon = normalizeOrkgResourceIri(k);
+
+          next[canon] = v;
+          ResourceLabelCache.set(canon, v);
+          ResourceLabelCache.set(orkgResourceIriTail(canon), v);
+        }
+        if (Object.keys(next).length > 0) {
+          setResolvedLabels((prev) => ({ ...prev, ...next }));
+        }
+      })
+      .catch(() => {});
+  }, [loading, selectedKeys, resources, resolvedLabels]);
+
+  /** Keep search box label in sync when value/resources load (e.g. after remount). */
+  useEffect(() => {
+    if (loading || multiselect) return;
+
+    const raw = Array.isArray(value) ? value[0] : value;
+
+    if (!raw) {
+      setInputValue("");
+
+      return;
+    }
+
+    const id = String(raw);
+    const canon = normalizeOrkgResourceIri(id);
+    const match = resources.find((r) => resourceIrisEquivalent(r.id, id));
+    const labelText =
+      match?.label ??
+      resolvedLabels[canon] ??
+      ResourceLabelCache.get(id) ??
+      ResourceLabelCache.get(canon) ??
+      orkgResourceIriTail(canon);
+
+    setInputValue(labelText);
+  }, [loading, multiselect, value, resources, resolvedLabels]);
+
+  const mergedResources = useMemo(() => {
+    const byId = new Map<string, OrkgResourceOption>();
+
+    for (const r of resources) {
+      const canon = normalizeOrkgResourceIri(r.id);
+
+      byId.set(canon, { ...r, id: canon });
+    }
+
+    for (const r of searchHits) {
+      const canon = normalizeOrkgResourceIri(r.id);
+
+      if (!byId.has(canon)) {
+        byId.set(canon, { ...r, id: canon });
+      }
+    }
+
+    for (const key of selectedKeys) {
+      const canon = normalizeOrkgResourceIri(key);
+
+      if (!byId.has(canon)) {
+        const lab =
+          resolvedLabels[canon] ??
+          ResourceLabelCache.get(key) ??
+          ResourceLabelCache.get(canon) ??
+          orkgResourceIriTail(canon);
+
+        byId.set(canon, { id: canon, label: lab });
+      }
+    }
+
+    return Array.from(byId.values()).sort((a, b) =>
+      a.label.localeCompare(b.label, undefined, { sensitivity: "base" }),
+    );
+  }, [resources, searchHits, selectedKeys, resolvedLabels]);
+
   const id = `field-${propertyId}`;
-  const selectedKeys = Array.isArray(value)
-    ? value.map(String)
-    : value
-      ? [String(value)]
-      : [];
 
   if (loading) {
     return (
@@ -124,9 +355,14 @@ export function ResourceAutoselect({
         </div>
         <Link
           isExternal
-          href={classId ? getOrkgCreateResourceLink(classId) || "https://orkg.org/add-resource" : "https://orkg.org/add-resource"}
           aria-label="Create new resource in ORKG"
           className="text-primary w-fit"
+          href={
+            classId
+              ? getOrkgCreateResourceLink(classId) ||
+                "https://orkg.org/add-resource"
+              : "https://orkg.org/add-resource"
+          }
           size="sm"
         >
           Create new in ORKG
@@ -140,21 +376,34 @@ export function ResourceAutoselect({
       <FieldLabel classId={classId} label={label} propertyId={propertyId} />
 
       {multiselect && selectedKeys.length > 0 && (
-        <div className="flex flex-wrap gap-2 mb-1">
+        <div className="mb-1 flex flex-wrap gap-2">
           {selectedKeys.map((key) => {
+            const canon = normalizeOrkgResourceIri(key);
             const displayLabel =
-              ResourceLabelCache.get(key) || key.split("/").pop() || key;
+              mergedResources.find((r) => resourceIrisEquivalent(r.id, key))
+                ?.label ??
+              resolvedLabels[canon] ??
+              ResourceLabelCache.get(key) ??
+              ResourceLabelCache.get(canon) ??
+              orkgResourceIriTail(canon);
+
+            const shortId = orkgResourceIriTail(canon);
 
             return (
               <Chip
-                key={key}
+                key={canon}
                 color="primary"
                 variant="flat"
                 onClose={() => {
-                  onChange(selectedKeys.filter((k) => k !== key));
+                  onChange(
+                    selectedKeys.filter((k) => !resourceIrisEquivalent(k, key)),
+                  );
                 }}
               >
-                {displayLabel}
+                <span>{displayLabel}</span>
+                <span className="ml-1 font-mono text-[0.7rem] text-default-600">
+                  {shortId}
+                </span>
               </Chip>
             );
           })}
@@ -170,7 +419,7 @@ export function ResourceAutoselect({
         placeholder={
           placeholder ??
           (multiselect
-            ? "Search and select one or more..."
+            ? "Type to search ORKG, then pick resources…"
             : "Search and select...")
         }
         selectedKey={
@@ -181,23 +430,24 @@ export function ResourceAutoselect({
 
                 if (!current) return undefined;
 
-                if (resources.some((r) => r.id === current)) return current;
-                const match = resources.find(
+                if (
+                  mergedResources.some((r) =>
+                    resourceIrisEquivalent(r.id, current),
+                  )
+                )
+                  return normalizeOrkgResourceIri(current);
+                const match = mergedResources.find(
                   (r) =>
-                    r.id.split("/").pop() === current ||
-                    r.label === current ||
-                    r.id.split("/").pop() === current.split("/").pop(),
+                    resourceIrisEquivalent(r.id, current) ||
+                    r.label === current,
                 );
 
-                return match ? match.id : current;
+                return match ? match.id : normalizeOrkgResourceIri(current);
               })()
         }
         variant="bordered"
         onInputChange={(val) => {
           setInputValue(val);
-          if (!val && !multiselect) {
-            onChange("");
-          }
         }}
         onSelectionChange={(key) => {
           if (!key) {
@@ -207,28 +457,43 @@ export function ResourceAutoselect({
           }
 
           const selected = String(key);
+          const canonical =
+            mergedResources.find((r) => resourceIrisEquivalent(r.id, selected))
+              ?.id ?? normalizeOrkgResourceIri(selected);
 
           if (multiselect) {
-            if (!selectedKeys.includes(selected)) {
-              onChange([...selectedKeys, selected]);
+            if (
+              !selectedKeys.some((k) => resourceIrisEquivalent(k, canonical))
+            ) {
+              onChange(dedupeOrkgResourceIris([...selectedKeys, canonical]));
             }
             setInputValue("");
           } else {
-            onChange(selected);
+            onChange(canonical);
             setInputValue(
-              resources.find((r) => r.id === selected)?.label || selected,
+              mergedResources.find((r) => r.id === canonical)?.label ||
+                resolvedLabels[canonical] ||
+                orkgResourceIriTail(canonical),
             );
           }
         }}
       >
-        {resources.map((r) => {
+        {mergedResources.map((r) => {
           const orkgUrl = getOrkgResourceLinkFromIri(r.id);
           const displayLabel = r.label || r.id.split("/").pop() || r.id;
+          const shortId = orkgResourceIriTail(r.id);
+          const descriptionParts = [`ID: ${shortId}`];
+
+          if (r.creator) {
+            descriptionParts.push(`Created by: ${r.creator}`);
+          }
+
+          const description = descriptionParts.join(" · ");
 
           return (
             <AutocompleteItem
               key={r.id}
-              description={r.creator ? `Created by: ${r.creator}` : undefined}
+              description={description}
               endContent={
                 orkgUrl ? (
                   <Link
@@ -258,7 +523,7 @@ export function ResourceAutoselect({
                   </Link>
                 ) : undefined
               }
-              textValue={displayLabel}
+              textValue={`${displayLabel} ${shortId}`}
             >
               {displayLabel}
             </AutocompleteItem>
@@ -267,9 +532,14 @@ export function ResourceAutoselect({
       </Autocomplete>
       <Link
         isExternal
-        href={classId ? getOrkgCreateResourceLink(classId) || "https://orkg.org/add-resource" : "https://orkg.org/add-resource"}
         aria-label="Create new resource in ORKG"
         className="text-primary w-fit"
+        href={
+          classId
+            ? getOrkgCreateResourceLink(classId) ||
+              "https://orkg.org/add-resource"
+            : "https://orkg.org/add-resource"
+        }
         size="sm"
       >
         Create new in ORKG

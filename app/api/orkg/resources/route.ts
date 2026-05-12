@@ -14,22 +14,65 @@ export interface OrkgResourceOption {
 
 /**
  * GET /api/orkg/resources?predicateId=P181002&classId=C121018
+ * GET /api/orkg/resources?q=keyword&classId=C121018 (optional) — ORKG label search
  * Returns list of ORKG resources (IRIs) for user to choose from.
  */
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const predicateId = searchParams.get("predicateId");
   const classId = searchParams.get("classId");
+  const qRaw = searchParams.get("q");
+  const q = qRaw?.trim() ?? "";
   const limitParam = searchParams.get("limit");
+
+  const limit = limitParam ? parseInt(limitParam, 10) : 500;
+  const effectiveLimit = Number.isNaN(limit)
+    ? 500
+    : Math.min(Math.max(limit, 1), 5000);
+
+  /** Live label search on ORKG (used while typing in resource autoselect). */
+  if (q.length >= 2) {
+    const searchSize = Math.min(Math.max(effectiveLimit, 1), 50);
+    const classIdClean = classId?.startsWith("http")
+      ? classId.split("/").pop()
+      : classId;
+    const url = new URL("https://orkg.org/api/resources");
+
+    url.searchParams.set("q", q);
+    url.searchParams.set("size", String(searchSize));
+    url.searchParams.set("sort", "label");
+    if (classIdClean) url.searchParams.set("include", classIdClean);
+
+    try {
+      const restRes = await fetch(url.toString());
+
+      if (restRes.ok) {
+        const data = await restRes.json();
+        const items = data.content || [];
+        const resources: OrkgResourceOption[] = items.map((i: any) => ({
+          id: `http://orkg.org/orkg/resource/${i.id}`,
+          label: i.label,
+        }));
+
+        return NextResponse.json({ resources });
+      }
+    } catch (e) {
+      // eslint-disable-next-line no-console -- server-side diagnostic
+      console.error("ORKG resource search failed", e);
+    }
+
+    return NextResponse.json({ resources: [] });
+  }
 
   if (!predicateId && !classId) {
     return NextResponse.json(
-      { error: "Missing predicateId or classId" },
+      {
+        error:
+          "Missing predicateId or classId (or use q= with at least 2 characters)",
+      },
       { status: 400 },
     );
   }
-
-  const limit = limitParam ? parseInt(limitParam, 10) : 500;
 
   // Use REST API if classId is provided to get all instances and creator info
   if (classId) {
@@ -39,7 +82,7 @@ export async function GET(request: NextRequest) {
 
     try {
       const restRes = await fetch(
-        `https://orkg.org/api/resources/?include=${classIdClean}&size=${Math.min(limit, 1000)}&sort=created_at,desc`,
+        `https://orkg.org/api/resources/?include=${classIdClean}&size=${Math.min(effectiveLimit, 1000)}&sort=created_at,desc`,
       );
 
       if (restRes.ok) {
@@ -88,6 +131,7 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ resources });
       }
     } catch (e) {
+      // eslint-disable-next-line no-console -- server-side diagnostic
       console.error("Failed to fetch from REST API", e);
     }
   }
@@ -95,7 +139,7 @@ export async function GET(request: NextRequest) {
   // Fallback to SPARQL if no classId or REST failed
   const query = buildResourcesQuery(predicateId ?? "", {
     classId: classId ?? undefined,
-    limit: Number.isNaN(limit) ? 500 : Math.min(limit, 1000),
+    limit: effectiveLimit,
   });
 
   if (!query) {
