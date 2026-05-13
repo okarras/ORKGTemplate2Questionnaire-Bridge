@@ -1,41 +1,26 @@
 "use client";
 
+import type { ComponentProps } from "react";
 import type { ScidQuestQuestionnaireTemplate } from "@/lib/orkg-to-scidquest-adapter";
 
-import dynamic from "next/dynamic";
+import { QuestionnaireForm } from "./QuestionnaireForm";
+import { QuestionnaireScidQuestView } from "./QuestionnaireScidQuestView";
 
-const QuestionnaireScidQuestView = dynamic(
-  () =>
-    import("./QuestionnaireScidQuestView").then(
-      (m) => m.QuestionnaireScidQuestView,
-    ),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="py-8 text-default-500">Loading questionnaire…</div>
-    ),
-  },
-);
+type QuestionnaireFormProps = ComponentProps<typeof QuestionnaireForm>;
 
 interface QuestionnaireViewLoaderProps {
-  label: string;
-  templateSpec: ScidQuestQuestionnaireTemplate;
-  initialAnswers?: Record<string, unknown>;
-  onAnswersChange?: (answers: Record<string, unknown>) => void;
+  formProps: QuestionnaireFormProps;
+  templateSpec: ScidQuestQuestionnaireTemplate | null;
 }
 
 export function QuestionnaireViewLoader({
-  label,
+  formProps,
   templateSpec,
-  initialAnswers,
-  onAnswersChange,
 }: QuestionnaireViewLoaderProps) {
   return (
     <QuestionnaireScidQuestView
-      initialAnswers={initialAnswers}
-      label={label}
+      formProps={formProps}
       templateSpec={templateSpec}
-      onAnswersChange={onAnswersChange}
     />
   );
 }

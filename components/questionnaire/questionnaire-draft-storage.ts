@@ -6,7 +6,7 @@ import type {
   OrderedBlock,
 } from "./questionnaire-form-types";
 
-import { buildInitialValues } from "./questionnaire-form-value-helpers";
+import { buildInitialValues, coerceFormValuesToDeclaredTypes } from "./questionnaire-form-value-helpers";
 
 export const QUESTIONNAIRE_DRAFT_STORAGE_VERSION = 1 as const;
 
@@ -159,5 +159,5 @@ export function mergeLoadedFormValues(
     if (!(k in base)) out[k] = saved[k]!;
   }
 
-  return out;
+  return coerceFormValuesToDeclaredTypes(mapping, out);
 }

@@ -44,6 +44,7 @@ import { QuestionnaireSortableBlock } from "./QuestionnaireSortableBlock";
 import { CUSTOM_PREFIX } from "./questionnaire-form-constants";
 import {
   buildInitialValues,
+  coerceFormValuesToDeclaredTypes,
   inflateFromJson,
 } from "./questionnaire-form-value-helpers";
 import { downloadQuestionnaireJsonExport } from "./questionnaire-export-json";
@@ -436,6 +437,7 @@ export function QuestionnaireForm({
 
   const removeBuiltinProperty = useCallback(
     (propertyPath: string) => {
+      console.log("####RemoveBuiltinProperty", propertyPath);
       setStructure((prev) => ({
         ...prev,
         removedBuiltinProperties: [
@@ -568,9 +570,23 @@ export function QuestionnaireForm({
 
   const getInputTypeForPath = useCallback(
     (path: string, prop: SubtemplateProperty): InputType => {
+      console.log("getInputTypeForPath", path, prop);
+      if (prop.label === "hidden in text") {
+        console.log("@@@ getInputTypeForPath", path, prop, fieldOverrides);
+      }
       const o = fieldOverrides[path];
 
       if (o?.inputType) return o.inputType;
+
+      const nested = prop.subtemplate_properties;
+
+      if (
+        nested &&
+        Object.keys(nested).length > 0 &&
+        prop.cardinality?.toLowerCase() !== "one to many"
+      ) {
+        return "text";
+      }
 
       const enriched = prop as EnrichedSubtemplateProperty;
 
@@ -642,7 +658,7 @@ export function QuestionnaireForm({
             next[CUSTOM_PREFIX + customId] = (v as FormValue) ?? "";
           }
 
-          return next;
+          return coerceFormValuesToDeclaredTypes(mapping, next);
         });
       } catch (err) {
         // eslint-disable-next-line no-console -- client-side import error

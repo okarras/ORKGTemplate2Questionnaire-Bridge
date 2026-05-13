@@ -13,7 +13,7 @@ import type {
 } from "./QuestionnaireForm";
 import type { CustomBlock } from "@/types/template";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import { Accordion, AccordionItem } from "@heroui/accordion";
 import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
@@ -33,6 +33,7 @@ import {
   TextBlock,
 } from "./CustomBlocks";
 import { DynamicFieldInput } from "./DynamicFieldInput";
+import { ScidQuestFieldAiChrome } from "./ScidQuestFieldAiChrome";
 import {
   getInputTypeForProperty,
   getInputTypeFromValueType,
@@ -51,6 +52,13 @@ const INPUT_TYPE_OPTIONS: { value: InputType; label: string }[] = [
   { value: "date", label: "Date" },
   { value: "resource", label: "Resource (ORKG autocomplete)" },
 ];
+
+function isOneToOneCardinality(cardinality?: string): boolean {
+  if (!cardinality) return true;
+  const n = cardinality.toLowerCase().replace(/-/g, " ");
+
+  return n === "one to one" || n === "1 to 1" || n === "1:1";
+}
 
 function toPropertyValue(v: FormValue | undefined): PropertyValue {
   if (v === undefined || v === null) return "";
@@ -102,6 +110,16 @@ interface TemplatePropertyRendererProps {
   values?: Record<string, FormValue>;
   removedBuiltinProperties?: string[];
   onRemoveBuiltinProperty?: (propertyPath: string) => void;
+  /**
+   * When this renderer is nested under a subtemplate accordion row, the row title
+   * already shows the field label — hide the duplicate label on the control.
+   */
+  hideLeafLabelInAccordion?: boolean;
+  /**
+   * When true, the block title is shown on the parent `QuestionnaireSortableBlock`
+   * summary — omit the same label on the field control (ORKG-style).
+   */
+  sectionTitleRenderedExternally?: boolean;
 }
 
 export function TemplatePropertyRenderer({
@@ -128,6 +146,8 @@ export function TemplatePropertyRenderer({
   values = {},
   removedBuiltinProperties = [],
   onRemoveBuiltinProperty,
+  hideLeafLabelInAccordion = false,
+  sectionTitleRenderedExternally = false,
 }: TemplatePropertyRendererProps) {
   const [internalValue, setInternalValue] = useState<PropertyValue>("");
   const [isEditing, setIsEditing] = useState(false);
@@ -141,6 +161,9 @@ export function TemplatePropertyRenderer({
     max: 5,
   });
   const [isFilterDialogOpen, setIsFilterDialogOpen] = useState(false);
+  const [orkgResourceOptionsForAi, setOrkgResourceOptionsForAi] = useState<
+    SelectOption[]
+  >([]);
   const isControlled = controlledOnChange !== undefined;
 
   const propertyPath = propPath ?? propertyId;
@@ -182,6 +205,37 @@ export function TemplatePropertyRenderer({
   const effectiveLabel = overrides?.label ?? property.label;
   const effectiveDescription = overrides?.description ?? property.description;
   const selectOptions = overrides?.selectOptions;
+  const selectOptionsForAi = useMemo(() => {
+    const fromOverrides = [...(selectOptions ?? [])];
+    const seen = new Set(fromOverrides.map((o) => String(o.value)));
+    const out: SelectOption[] = [...fromOverrides];
+
+    for (const o of orkgResourceOptionsForAi) {
+      const k = String(o.value);
+
+      if (k && !seen.has(k)) {
+        seen.add(k);
+        out.push(o);
+      }
+    }
+
+    const max = 200;
+
+    return out.length > max ? out.slice(0, max) : out;
+  }, [selectOptions, orkgResourceOptionsForAi]);
+
+  const handleOrkgResourceOptionsSnapshot = useCallback(
+    (opts: SelectOption[], scopeKey: string) => {
+      if (scopeKey !== propertyPath) return;
+      setOrkgResourceOptionsForAi(opts);
+    },
+    [propertyPath],
+  );
+
+  useEffect(() => {
+    setOrkgResourceOptionsForAi([]);
+  }, [propertyPath]);
+
   const scaleConfig = overrides?.scaleConfig;
   const inputType = getInputTypeForPath
     ? getInputTypeForPath(propertyPath, property)
@@ -245,6 +299,11 @@ export function TemplatePropertyRenderer({
   const hasSubproperties =
     property.subtemplate_properties &&
     Object.keys(property.subtemplate_properties).length > 0;
+
+  /** Nested subtemplate: ORKG stores literals on the nested shape; skip redundant root resource/text row except one-to-many arrays. */
+  const hideRootScalarInput =
+    Boolean(hasSubproperties) &&
+    (!isControlled || !Array.isArray(controlledValue));
 
   const hasOverrides = Boolean(
     overrides?.label ??
@@ -552,331 +611,338 @@ export function TemplatePropertyRenderer({
     </Accordion>
   );
 
+  const hideControlDuplicateLabel =
+    hideLeafLabelInAccordion ||
+    (Boolean(sectionTitleRenderedExternally) &&
+      depth === 0 &&
+      !hasSubproperties);
+
   // Leaf property: render input only
   if (!hasSubproperties) {
     return (
       <div className="w-full">
-        <DynamicFieldInput
+        <ScidQuestFieldAiChrome
           cardinality={property.cardinality}
-          classId={property.class_id}
-          createLink={property.create_link}
           inputType={inputType}
           label={effectiveLabel}
-          placeholder={effectiveDescription}
           propertyId={propertyId}
-          scaleConfig={scaleConfig}
-          selectOptions={selectOptions}
+          selectOptions={selectOptionsForAi}
           value={value}
           onChange={onChange}
-        />
+        >
+          <DynamicFieldInput
+            cardinality={property.cardinality}
+            classId={property.class_id}
+            createLink={property.create_link}
+            hideLabel={hideControlDuplicateLabel}
+            inputType={inputType}
+            label={effectiveLabel}
+            placeholder={effectiveDescription}
+            propertyId={propertyId}
+            resourceOptionsScope={propertyPath}
+            scaleConfig={scaleConfig}
+            selectOptions={selectOptions}
+            value={value}
+            onChange={onChange}
+            onResourceOptionsSnapshot={handleOrkgResourceOptionsSnapshot}
+          />
+        </ScidQuestFieldAiChrome>
         {fieldEditorUi}
       </div>
     );
   }
 
   // Property with nested subtemplate_properties
+  const nestedSubtemplateWithOwnTitle = depth > 0;
+
+  const subFieldRows = (
+    <>
+      {Object.entries(property.subtemplate_properties!)
+        .filter(
+          ([subPropId]) =>
+            !removedBuiltinProperties.includes(`${propertyPath}.${subPropId}`),
+        )
+        .map(([subPropId, subProp]) => (
+          <details
+            key={subPropId}
+            className="group/subfield rounded-lg border border-default-100 bg-content1"
+          >
+            <summary className="flex w-full min-w-0 cursor-pointer list-none items-center justify-between gap-3 border-b border-default-100 bg-default-50/70 px-3 py-2.5 text-left text-sm font-semibold text-default-900 hover:bg-default-50 [&::-webkit-details-marker]:hidden">
+              <span className="min-w-0 flex-1 break-words pr-1">
+                {fieldOverrides[`${propertyPath}.${subPropId}`]?.label ??
+                  subProp.label}
+              </span>
+              <div className="flex shrink-0 items-center gap-2">
+                {!isOneToOneCardinality(subProp.cardinality) && (
+                  <span className="shrink-0 text-xs font-normal font-mono text-default-500">
+                    {subProp.cardinality}
+                  </span>
+                )}
+                {onRemoveBuiltinProperty && (
+                  <Button
+                    className="h-7 min-w-fit px-2 text-xs font-medium"
+                    color="danger"
+                    size="sm"
+                    type="button"
+                    variant="light"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                    }}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onPress={() =>
+                      onRemoveBuiltinProperty(`${propertyPath}.${subPropId}`)
+                    }
+                  >
+                    Remove
+                  </Button>
+                )}
+              </div>
+            </summary>
+            <div className="overflow-hidden rounded-b-lg border-t border-default-100 bg-background px-3 py-3">
+              <TemplatePropertyRenderer
+                hideLeafLabelInAccordion
+                customBlocks={customBlocks}
+                depth={depth + 1}
+                editMode={editMode}
+                fieldOverrides={fieldOverrides}
+                getInputTypeForPath={getInputTypeForPath}
+                nestedCustomBlockIds={
+                  nestedCustomBlocksRecord[`${propertyPath}.${subPropId}`] ?? []
+                }
+                nestedCustomBlocksRecord={nestedCustomBlocksRecord}
+                property={subProp}
+                propertyId={subPropId}
+                propertyPath={`${propertyPath}.${subPropId}`}
+                removedBuiltinProperties={removedBuiltinProperties}
+                value={
+                  typeof controlledValue === "object" &&
+                  controlledValue !== null &&
+                  !Array.isArray(controlledValue)
+                    ? (controlledValue as Record<string, FormValue>)[subPropId]
+                    : undefined
+                }
+                values={values}
+                onAddChildToSection={onAddChildToSection}
+                onAddNestedBlock={onAddNestedBlock}
+                onFieldOverride={onFieldOverride}
+                onNestedCustomValueChange={onNestedCustomValueChange}
+                onRemoveBuiltinProperty={onRemoveBuiltinProperty}
+                onRemoveChildFromSection={onRemoveChildFromSection}
+                onRemoveNestedBlock={onRemoveNestedBlock}
+                onReorderSectionChildren={onReorderSectionChildren}
+                onUpdateCustomBlock={onUpdateCustomBlock}
+                onValueChange={(v) => {
+                  if (!controlledOnChange) return;
+                  const hasSub =
+                    property.subtemplate_properties &&
+                    Object.keys(property.subtemplate_properties).length > 0;
+                  const current = controlledValue;
+
+                  if (
+                    hasSub &&
+                    typeof current === "object" &&
+                    current !== null &&
+                    !Array.isArray(current)
+                  ) {
+                    controlledOnChange({
+                      ...current,
+                      [subPropId]: v,
+                    });
+                  } else {
+                    controlledOnChange({ [subPropId]: v });
+                  }
+                }}
+              />
+            </div>
+          </details>
+        ))}
+      {nestedCustomBlockIds.map((blockId) => {
+        const block = customBlocks[blockId];
+
+        if (!block) return null;
+
+        const nestedSummaryClass =
+          "flex w-full cursor-pointer list-none items-center justify-between gap-2 border-b border-default-100 bg-default-50/70 px-3 py-2.5 text-left text-sm font-semibold text-default-900 hover:bg-default-50 [&::-webkit-details-marker]:hidden";
+
+        if (block.type === "text") {
+          return (
+            <details
+              key={blockId}
+              className="group/subfield rounded-lg border border-default-100 bg-content1 overflow-hidden"
+            >
+              <summary className={nestedSummaryClass}>
+                {block.heading ?? "Text block"}
+              </summary>
+              <div className="border-t border-default-100 bg-background px-3 py-3">
+                <TextBlock
+                  block={block}
+                  editMode={editMode}
+                  onRemove={() => onRemoveNestedBlock?.(propertyPath!, blockId)}
+                  onUpdate={(b) => onUpdateCustomBlock?.(blockId, b)}
+                />
+              </div>
+            </details>
+          );
+        }
+        if (block.type === "customField") {
+          return (
+            <details
+              key={blockId}
+              className="group/subfield rounded-lg border border-default-100 bg-content1 overflow-hidden"
+            >
+              <summary className={nestedSummaryClass}>{block.label}</summary>
+              <div className="border-t border-default-100 bg-background px-3 py-3">
+                <CustomFieldBlock
+                  block={block}
+                  editMode={editMode}
+                  value={
+                    (values[`__custom_${blockId}`] as
+                      | string
+                      | number
+                      | boolean
+                      | string[]
+                      | undefined) ?? ""
+                  }
+                  onChange={(v) => onNestedCustomValueChange?.(blockId, v)}
+                  onRemove={() => onRemoveNestedBlock?.(propertyPath!, blockId)}
+                  onUpdate={(b) => onUpdateCustomBlock?.(blockId, b)}
+                />
+              </div>
+            </details>
+          );
+        }
+        if (block.type === "html") {
+          return (
+            <details
+              key={blockId}
+              className="group/subfield rounded-lg border border-default-100 bg-content1 overflow-hidden"
+            >
+              <summary className={nestedSummaryClass}>HTML block</summary>
+              <div className="border-t border-default-100 bg-background px-3 py-3">
+                <HtmlBlock
+                  block={block}
+                  editMode={editMode}
+                  onRemove={() => onRemoveNestedBlock?.(propertyPath!, blockId)}
+                  onUpdate={(b) => onUpdateCustomBlock?.(blockId, b)}
+                />
+              </div>
+            </details>
+          );
+        }
+        if (block.type === "section") {
+          return (
+            <details
+              key={blockId}
+              className="group/subfield rounded-lg border border-default-100 bg-content1 overflow-hidden"
+            >
+              <summary className={nestedSummaryClass}>{block.title}</summary>
+              <div className="border-t border-default-100 bg-background px-3 py-3">
+                <SectionBlock
+                  block={block}
+                  childBlocks={(block.childIds ?? [])
+                    .map((cid) => customBlocks[cid])
+                    .filter(Boolean)}
+                  editMode={editMode}
+                  getChildBlocks={(sectionId) =>
+                    (
+                      (customBlocks[sectionId] as { childIds?: string[] })
+                        ?.childIds ?? []
+                    )
+                      .map((cid) => customBlocks[cid])
+                      .filter(Boolean)
+                  }
+                  getChildValue={(cid) =>
+                    (values[`__custom_${cid}`] as
+                      | string
+                      | number
+                      | boolean
+                      | string[]
+                      | undefined) ?? ""
+                  }
+                  onAddChild={onAddChildToSection}
+                  onChildValueChange={(cid, v) =>
+                    onNestedCustomValueChange?.(cid, v)
+                  }
+                  onRemove={() => onRemoveNestedBlock?.(propertyPath!, blockId)}
+                  onRemoveChild={onRemoveChildFromSection}
+                  onReorderChildren={onReorderSectionChildren}
+                  onUpdate={(b) => onUpdateCustomBlock?.(blockId, b)}
+                  onUpdateChild={(cid, b) => onUpdateCustomBlock?.(cid, b)}
+                />
+              </div>
+            </details>
+          );
+        }
+
+        return null;
+      })}
+    </>
+  );
+
   return (
-    <div className="w-full space-y-3">
-      <DynamicFieldInput
-        cardinality={property.cardinality}
-        classId={property.class_id}
-        createLink={property.create_link}
-        inputType={inputType}
-        label={effectiveLabel}
-        placeholder={effectiveDescription}
-        propertyId={propertyId}
-        scaleConfig={scaleConfig}
-        selectOptions={selectOptions}
-        value={value}
-        onChange={onChange}
-      />
-      {fieldEditorUi}
-      <div className="ml-3 border-l border-default-200/70 pl-4">
-        {effectiveDescription && (
-          <p className="mb-2 text-xs text-default-500">
-            {effectiveDescription}
-          </p>
-        )}
-        <Accordion
-          className="gap-1"
-          itemClasses={{
-            base: "rounded-lg border-none bg-transparent",
-          }}
-          variant="shadow"
+    <div className="w-full space-y-4">
+      {!hideRootScalarInput ? (
+        <ScidQuestFieldAiChrome
+          cardinality={property.cardinality}
+          inputType={inputType}
+          label={effectiveLabel}
+          propertyId={propertyId}
+          selectOptions={selectOptionsForAi}
+          value={value}
+          onChange={onChange}
         >
-          {[
-            ...Object.entries(property.subtemplate_properties!)
-              .filter(
-                ([subPropId]) =>
-                  !removedBuiltinProperties.includes(
-                    `${propertyPath}.${subPropId}`,
-                  ),
-              )
-              .map(([subPropId, subProp]) => (
-                <AccordionItem
-                  key={subPropId}
-                  aria-label={
-                    fieldOverrides[`${propertyPath}.${subPropId}`]?.label ??
-                    subProp.label
-                  }
-                  classNames={{
-                    title: "text-default-800 font-medium",
-                    trigger:
-                      "group py-3 px-4 data-[hover=true]:bg-primary/5 data-[open=true]:bg-default-50 rounded-xl min-h-0",
-                    content: "px-4 pb-4",
-                  }}
-                  subtitle={subProp.cardinality}
-                  title={
-                    <div className="flex w-full items-center justify-between gap-4 pr-2">
-                      <span>
-                        {fieldOverrides[`${propertyPath}.${subPropId}`]
-                          ?.label ?? subProp.label}
-                      </span>
-                      {onRemoveBuiltinProperty && (
-                        <div
-                          role="button"
-                          tabIndex={0}
-                          className="opacity-0 transition-opacity group-hover:opacity-70 hover:opacity-100 text-danger bg-transparent hover:bg-danger/10 active:bg-danger/20 px-3 py-1 rounded-md text-sm font-medium cursor-pointer"
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            onRemoveBuiltinProperty(
-                              `${propertyPath}.${subPropId}`,
-                            );
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter' || e.key === ' ') {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              onRemoveBuiltinProperty(
-                                `${propertyPath}.${subPropId}`,
-                              );
-                            }
-                          }}
-                        >
-                          Remove
-                        </div>
-                      )}
-                    </div>
-                  }
-                >
-                  <div className="pb-2">
-                    <TemplatePropertyRenderer
-                      customBlocks={customBlocks}
-                      depth={depth + 1}
-                      editMode={editMode}
-                      fieldOverrides={fieldOverrides}
-                      getInputTypeForPath={getInputTypeForPath}
-                      nestedCustomBlockIds={
-                        nestedCustomBlocksRecord[
-                          `${propertyPath}.${subPropId}`
-                        ] ?? []
-                      }
-                      nestedCustomBlocksRecord={nestedCustomBlocksRecord}
-                      property={subProp}
-                      propertyId={subPropId}
-                      propertyPath={`${propertyPath}.${subPropId}`}
-                      removedBuiltinProperties={removedBuiltinProperties}
-                      value={
-                        typeof controlledValue === "object" &&
-                        controlledValue !== null &&
-                        !Array.isArray(controlledValue)
-                          ? (controlledValue as Record<string, FormValue>)[
-                              subPropId
-                            ]
-                          : undefined
-                      }
-                      values={values}
-                      onAddChildToSection={onAddChildToSection}
-                      onAddNestedBlock={onAddNestedBlock}
-                      onFieldOverride={onFieldOverride}
-                      onNestedCustomValueChange={onNestedCustomValueChange}
-                      onRemoveBuiltinProperty={onRemoveBuiltinProperty}
-                      onRemoveChildFromSection={onRemoveChildFromSection}
-                      onRemoveNestedBlock={onRemoveNestedBlock}
-                      onReorderSectionChildren={onReorderSectionChildren}
-                      onUpdateCustomBlock={onUpdateCustomBlock}
-                      onValueChange={(v) => {
-                        if (!controlledOnChange) return;
-                        const hasSub =
-                          property.subtemplate_properties &&
-                          Object.keys(property.subtemplate_properties).length >
-                            0;
-                        const current = controlledValue;
-
-                        if (
-                          hasSub &&
-                          typeof current === "object" &&
-                          current !== null &&
-                          !Array.isArray(current)
-                        ) {
-                          controlledOnChange({
-                            ...current,
-                            [subPropId]: v,
-                          });
-                        } else {
-                          controlledOnChange({ [subPropId]: v });
-                        }
-                      }}
-                    />
-                  </div>
-                </AccordionItem>
-              )),
-            ...nestedCustomBlockIds.map((blockId) => {
-              const block = customBlocks[blockId];
-
-              if (!block) return null;
-
-              if (block.type === "text") {
-                return (
-                  <AccordionItem
-                    key={blockId}
-                    aria-label={block.heading ?? "Text block"}
-                    classNames={{
-                      title: "text-default-800 font-medium",
-                      trigger:
-                        "py-3 px-4 data-[hover=true]:bg-primary/5 data-[open=true]:bg-default-50 rounded-xl min-h-0",
-                      content: "px-4 pb-4",
-                    }}
-                    title={block.heading ?? "Text block"}
-                  >
-                    <div className="pb-2">
-                      <TextBlock
-                        block={block}
-                        editMode={editMode}
-                        onRemove={() =>
-                          onRemoveNestedBlock?.(propertyPath!, blockId)
-                        }
-                        onUpdate={(b) => onUpdateCustomBlock?.(blockId, b)}
-                      />
-                    </div>
-                  </AccordionItem>
-                );
-              }
-              if (block.type === "customField") {
-                return (
-                  <AccordionItem
-                    key={blockId}
-                    aria-label={block.label}
-                    classNames={{
-                      title: "text-default-800 font-medium",
-                      trigger:
-                        "py-3 px-4 data-[hover=true]:bg-primary/5 data-[open=true]:bg-default-50 rounded-xl min-h-0",
-                      content: "px-4 pb-4",
-                    }}
-                    title={block.label}
-                  >
-                    <div className="pb-2">
-                      <CustomFieldBlock
-                        block={block}
-                        editMode={editMode}
-                        value={
-                          (values[`__custom_${blockId}`] as
-                            | string
-                            | number
-                            | boolean
-                            | string[]
-                            | undefined) ?? ""
-                        }
-                        onChange={(v) =>
-                          onNestedCustomValueChange?.(blockId, v)
-                        }
-                        onRemove={() =>
-                          onRemoveNestedBlock?.(propertyPath!, blockId)
-                        }
-                        onUpdate={(b) => onUpdateCustomBlock?.(blockId, b)}
-                      />
-                    </div>
-                  </AccordionItem>
-                );
-              }
-              if (block.type === "html") {
-                return (
-                  <AccordionItem
-                    key={blockId}
-                    aria-label="HTML block"
-                    classNames={{
-                      title: "text-default-800 font-medium",
-                      trigger:
-                        "py-3 px-4 data-[hover=true]:bg-primary/5 data-[open=true]:bg-default-50 rounded-xl min-h-0",
-                      content: "px-4 pb-4",
-                    }}
-                    title="HTML block"
-                  >
-                    <div className="pb-2">
-                      <HtmlBlock
-                        block={block}
-                        editMode={editMode}
-                        onRemove={() =>
-                          onRemoveNestedBlock?.(propertyPath!, blockId)
-                        }
-                        onUpdate={(b) => onUpdateCustomBlock?.(blockId, b)}
-                      />
-                    </div>
-                  </AccordionItem>
-                );
-              }
-              if (block.type === "section") {
-                return (
-                  <AccordionItem
-                    key={blockId}
-                    aria-label={block.title}
-                    classNames={{
-                      title: "text-default-800 font-medium",
-                      trigger:
-                        "py-3 px-4 data-[hover=true]:bg-primary/5 data-[open=true]:bg-default-50 rounded-xl min-h-0",
-                      content: "px-4 pb-4",
-                    }}
-                    title={block.title}
-                  >
-                    <div className="pb-2">
-                      <SectionBlock
-                        block={block}
-                        childBlocks={(block.childIds ?? [])
-                          .map((cid) => customBlocks[cid])
-                          .filter(Boolean)}
-                        editMode={editMode}
-                        getChildBlocks={(sectionId) =>
-                          (
-                            (customBlocks[sectionId] as { childIds?: string[] })
-                              ?.childIds ?? []
-                          )
-                            .map((cid) => customBlocks[cid])
-                            .filter(Boolean)
-                        }
-                        getChildValue={(cid) =>
-                          (values[`__custom_${cid}`] as
-                            | string
-                            | number
-                            | boolean
-                            | string[]
-                            | undefined) ?? ""
-                        }
-                        onAddChild={onAddChildToSection}
-                        onChildValueChange={(cid, v) =>
-                          onNestedCustomValueChange?.(cid, v)
-                        }
-                        onRemove={() =>
-                          onRemoveNestedBlock?.(propertyPath!, blockId)
-                        }
-                        onRemoveChild={onRemoveChildFromSection}
-                        onReorderChildren={onReorderSectionChildren}
-                        onUpdate={(b) => onUpdateCustomBlock?.(blockId, b)}
-                        onUpdateChild={(cid, b) =>
-                          onUpdateCustomBlock?.(cid, b)
-                        }
-                      />
-                    </div>
-                  </AccordionItem>
-                );
-              }
-
-              return null;
-            }),
-          ]}
-        </Accordion>
+          <DynamicFieldInput
+            cardinality={property.cardinality}
+            classId={property.class_id}
+            createLink={property.create_link}
+            hideLabel={
+              hideLeafLabelInAccordion ||
+              (!!sectionTitleRenderedExternally && depth === 0)
+            }
+            inputType={inputType}
+            label={effectiveLabel}
+            placeholder={effectiveDescription}
+            propertyId={propertyId}
+            resourceOptionsScope={propertyPath}
+            scaleConfig={scaleConfig}
+            selectOptions={selectOptions}
+            value={value}
+            onChange={onChange}
+            onResourceOptionsSnapshot={handleOrkgResourceOptionsSnapshot}
+          />
+        </ScidQuestFieldAiChrome>
+      ) : null}
+      {fieldEditorUi}
+      <div className="rounded-xl border border-default-100 bg-background overflow-hidden shadow-none">
+        {nestedSubtemplateWithOwnTitle ? (
+          <details open className="group/subsec">
+            <summary className="flex w-full cursor-pointer list-none items-center gap-2 border-b border-default-100 bg-default-50/90 px-4 py-3 text-left text-base font-semibold text-default-900 hover:bg-default-50 [&::-webkit-details-marker]:hidden">
+              {effectiveLabel}
+            </summary>
+            <div>
+              {effectiveDescription && (
+                <p className="border-b border-default-100 bg-default-50/30 px-4 py-3 text-sm text-default-600 leading-relaxed">
+                  {effectiveDescription}
+                </p>
+              )}
+              <div className="flex flex-col gap-2 p-3 sm:p-4">
+                {subFieldRows}
+              </div>
+            </div>
+          </details>
+        ) : (
+          <div>
+            {effectiveDescription && (
+              <p className="border-b border-default-100 bg-default-50/30 px-4 py-3 text-sm text-default-600 leading-relaxed">
+                {effectiveDescription}
+              </p>
+            )}
+            <div className="flex flex-col gap-2 p-3 sm:p-4">{subFieldRows}</div>
+          </div>
+        )}
         {editMode && onAddNestedBlock && (
-          <Dropdown className="mt-2">
+          <Dropdown className="border-t border-default-100 p-3">
             <DropdownTrigger>
               <Button
                 className="w-full border border-dashed border-default-300"

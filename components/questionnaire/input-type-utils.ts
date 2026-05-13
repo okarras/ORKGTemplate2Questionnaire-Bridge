@@ -1,5 +1,16 @@
 import type { InputType, OrkgValueType } from "@/types/template";
 
+/** RDF literal datatype IRIs for xsd:boolean (fragment, path segment, or CURIE-style). */
+export function isBooleanLiteralDatatype(literalDatatype?: string): boolean {
+  if (!literalDatatype) return false;
+  const dt = literalDatatype.trim().toLowerCase();
+
+  if (dt.endsWith("#boolean") || dt.endsWith("/boolean")) return true;
+  if (/(^|[#/])boolean$/i.test(dt)) return true;
+
+  return false;
+}
+
 const FALLBACK_INPUT_TYPES: InputType[] = [
   "text",
   "textarea",
@@ -19,12 +30,13 @@ export function getInputTypeFromValueType(
   valueType?: OrkgValueType,
   literalDatatype?: string,
 ): InputType {
+  console.log("getInputTypeFromValueType", valueType, literalDatatype);
   if (valueType === "IRI") return "resource";
 
   if (valueType === "Literal" && literalDatatype) {
     const dt = literalDatatype.toLowerCase();
 
-    if (dt.endsWith("#boolean")) return "checkbox";
+    if (isBooleanLiteralDatatype(literalDatatype)) return "checkbox";
     if (
       dt.endsWith("#integer") ||
       dt.endsWith("#int") ||

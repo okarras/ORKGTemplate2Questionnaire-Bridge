@@ -56,6 +56,7 @@ export interface GraphTemplate {
     description?: string;
     path?: { id: string; label?: string };
     class?: { id: string; label?: string };
+    datatype?: { id?: string; label?: string };
     min_count?: number;
     max_count?: number | null;
   }>;
@@ -151,6 +152,7 @@ export function adaptTemplate(api: ApiTemplate): GraphTemplate {
       description: p.description,
       path: p.path,
       class: p.class,
+      datatype: p.datatype,
       min_count: p.min_count,
       max_count: p.max_count,
     })),
@@ -233,6 +235,23 @@ export type PropertyMapping = SubtemplateProperty;
 export type PredicatesMapping = TemplateMapping;
 
 /**
+ * ORKG template API often puts auto-generated shape/template copy in `label` / `description`.
+ * Those strings are not suitable as the user-facing field title (prefer predicate path.label).
+ */
+function isOrkgTechnicalPropertyText(s: string): boolean {
+  const t = s.trim();
+
+  if (!t) return true;
+  if (/^R\d{3,}$/i.test(t)) return true;
+  if (/^P\d+$/i.test(t)) return true;
+  if (/^C\d+$/i.test(t)) return true;
+  if (/property\s+shape\s+for/i.test(t)) return true;
+  if (/component\s+for\s+template/i.test(t)) return true;
+
+  return false;
+}
+
+/**
  * Generate TemplateMapping (predicates keyed by path id) from templates.
  * Main template's properties become top-level keys; subtemplate properties nest.
  */
@@ -267,17 +286,42 @@ export function generateTemplateMapping(
       cardinality = "one to many";
     }
 
+    const rawApiLabel = property.label?.trim();
+    const usableApiLabel =
+      rawApiLabel && !isOrkgTechnicalPropertyText(rawApiLabel)
+        ? rawApiLabel
+        : undefined;
+    const rawDescription = property.description?.trim();
+    const usableDescription =
+      rawDescription && !isOrkgTechnicalPropertyText(rawDescription)
+        ? rawDescription
+        : undefined;
+
     const propMapping: PropertyMapping = {
-      label: property.class?.label ?? property.path?.label ?? pathId,
+      label:
+        property.path?.label ||
+        usableApiLabel ||
+        property.class?.label ||
+        pathId,
       cardinality,
       description:
-        property.description ||
-        property.label ||
+        usableDescription ||
         property.path?.label ||
+        usableApiLabel ||
+        property.class?.label ||
         pathId,
       predicate_label: property.path?.label,
       class_label: property.class?.label,
     };
+
+    if (property.datatype && (property.datatype.id || property.datatype.label)) {
+      propMapping.orkg_template_datatype = {
+        id: property.datatype.id ?? "",
+        ...(property.datatype.label !== undefined
+          ? { label: property.datatype.label }
+          : {}),
+      };
+    }
 
     if (property.class?.id) {
       const classId = property.class.id;
@@ -291,7 +335,14 @@ export function generateTemplateMapping(
 
       if (targetTemplate) {
         propMapping.subtemplate_id = targetTemplate.id;
-        propMapping.subtemplate_label = targetTemplate.label;
+        const templateTitle = targetTemplate.label?.trim();
+        propMapping.subtemplate_label =
+          templateTitle && !/^R\d{3,}$/i.test(templateTitle)
+            ? templateTitle
+            : targetTemplate.target_class?.label ||
+              property.class?.label ||
+              templateTitle ||
+              targetTemplate.id;
 
         if (
           targetTemplate.properties?.length &&

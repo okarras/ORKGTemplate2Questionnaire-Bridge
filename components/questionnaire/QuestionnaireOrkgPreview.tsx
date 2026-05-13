@@ -75,6 +75,14 @@ function getEffectiveInputType(
   propertyId: string,
   prop: EnrichedSubtemplateProperty,
 ): InputType {
+  const subs = prop.subtemplate_properties;
+
+  if (subs && Object.keys(subs).length > 0) {
+    const many = isManyCardinality(prop.cardinality);
+
+    if (!many) return "text";
+  }
+
   if (prop.valueType !== undefined) {
     return getInputTypeFromValueType(prop.valueType, prop.literalDatatype);
   }
@@ -719,19 +727,6 @@ export function QuestionnaireOrkgPreview({
           ← Back to templates
         </Button>
         <h1 className="text-2xl font-bold text-primary">{label}</h1>
-        <p className="text-small text-default-500 max-w-2xl">
-          Read-only preview styled like the{" "}
-          <a
-            className="text-primary underline underline-offset-2"
-            href="https://orkg.org/papers/R742443"
-            rel="noreferrer"
-            target="_blank"
-          >
-            ORKG data browser
-          </a>{" "}
-          (contributions tree). Order, custom blocks, removed nested fields, and
-          label overrides follow the form editor.
-        </p>
       </div>
 
       <div className="rounded-lg border border-default-200 bg-content1 shadow-sm overflow-hidden">

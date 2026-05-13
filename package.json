@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint --fix"
+    "lint": "eslint --fix",
+    "scidquest:build": "npm run build --prefix ../../ScidQuest"
   },
   "dependencies": {
     "@ai-sdk/openai": "^2.0.0-alpha.3",
@@ -55,8 +56,9 @@
     "@heroui/toast": "2.0.21",
     "@heroui/tooltip": "2.2.28",
     "@heroui/user": "2.2.25",
+    "@huggingface/transformers": "4.2.0",
     "@mui/material": "^6.4.11",
-    "@orkg/scidquest": "^1.0.4",
+    "@orkg/scidquest": "^1.1.0",
     "@react-aria/ssr": "3.9.10",
     "@react-aria/visually-hidden": "3.8.30",
     "@types/dompurify": "^3.0.5",

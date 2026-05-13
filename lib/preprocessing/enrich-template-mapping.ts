@@ -8,6 +8,26 @@ import type { OrkgPropertyValueMeta } from "@/lib/sparql/orkg-queries";
 
 import { fetchValueTypeFromOrkg } from "@/lib/sparql/fetch-value-type";
 
+function collectTemplateDatatypesByPropertyId(
+  mapping: Record<string, SubtemplateProperty>,
+): Map<string, { id: string; label?: string }> {
+  const out = new Map<string, { id: string; label?: string }>();
+
+  function walk(props: Record<string, SubtemplateProperty>) {
+    for (const [id, prop] of Object.entries(props)) {
+      if (prop.orkg_template_datatype && !out.has(id)) {
+        out.set(id, prop.orkg_template_datatype);
+      }
+      if (prop.subtemplate_properties) {
+        walk(prop.subtemplate_properties);
+      }
+    }
+  }
+
+  walk(mapping);
+  return out;
+}
+
 /**
  * Extracts unique predicate IDs from template mapping (including nested).
  */
@@ -30,16 +50,15 @@ function collectPredicateIds(
 }
 
 /**
- * Recursively enriches template mapping with valueType from SPARQL.
- * - IRI → resource (autoselect)
- * - Literal → input type from XSD datatype when available (e.g. boolean → checkbox)
- * - Blank node / Unknown → default to text
+ * Recursively enriches template mapping with value types from ORKG:
+ * template `datatype` (when present), SPARQL aggregates, and statements `object._class`.
  */
 export async function enrichTemplateMapping(
   mapping: TemplateMapping,
 ): Promise<EnrichedTemplateMapping> {
   const ids = collectPredicateIds(mapping);
   const valueTypeCache = new Map<string, OrkgPropertyValueMeta>();
+  const templateDtById = collectTemplateDatatypesByPropertyId(mapping);
 
   const BATCH_SIZE = 5;
   const idArray = Array.from(ids);
@@ -49,7 +68,9 @@ export async function enrichTemplateMapping(
 
     await Promise.all(
       batch.map(async (id) => {
-        const meta = await fetchValueTypeFromOrkg(id);
+        const meta = await fetchValueTypeFromOrkg(id, {
+          templateDatatype: templateDtById.get(id),
+        });
 
         valueTypeCache.set(id, meta);
       }),

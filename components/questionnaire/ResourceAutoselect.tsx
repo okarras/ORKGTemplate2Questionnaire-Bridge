@@ -15,6 +15,7 @@ import {
 import {
   dedupeOrkgResourceIris,
   normalizeOrkgResourceIri,
+  orkgEntityKindLineFromIri,
   orkgResourceIriTail,
   resourceIrisEquivalent,
 } from "@/lib/orkg-resource-ids";
@@ -28,6 +29,17 @@ interface OrkgResourceOption {
 
 type ResourceValue = string | number | boolean | string[];
 
+function formatOrkgOptionDescription(r: OrkgResourceOption): string {
+  const entity = orkgEntityKindLineFromIri(r.id);
+  const c = r.creator?.trim();
+
+  if (c && c !== "Unknown") return `${c} · ${entity}`;
+  if (c === "System") return `System · ${entity}`;
+  if (c === "Unknown") return `Unknown creator · ${entity}`;
+
+  return entity;
+}
+
 interface ResourceAutoselectProps {
   propertyId: string;
   label: string;
@@ -39,6 +51,18 @@ interface ResourceAutoselectProps {
   classId?: string;
   /** Options to filter the allowed resources */
   selectOptions?: { value: string; label: string }[];
+  /** Hide the visible FieldLabel row (label shown on parent accordion trigger) */
+  hideLabel?: boolean;
+  /**
+   * Fired when the ORKG class list and/or search hits change so the host can pass
+   * allowed labels/ids into AI prompts (e.g. ScidQuest) even without field overrides.
+   */
+  onResourceOptionsSnapshot?: (
+    options: { value: string; label: string }[],
+    scopeKey: string,
+  ) => void;
+  /** Scope for snapshot callbacks (e.g. full template property path). Defaults to `propertyId`. */
+  optionsScopeKey?: string;
 }
 
 export function ResourceAutoselect({
@@ -50,6 +74,9 @@ export function ResourceAutoselect({
   multiselect = false,
   classId,
   selectOptions,
+  hideLabel = false,
+  onResourceOptionsSnapshot,
+  optionsScopeKey,
 }: ResourceAutoselectProps) {
   const [resources, setResources] = useState<OrkgResourceOption[]>([]);
   const [loading, setLoading] = useState(true);
@@ -60,6 +87,7 @@ export function ResourceAutoselect({
   );
   const resolveAttemptedRef = useRef<Set<string>>(new Set());
   const searchAbortRef = useRef<AbortController | null>(null);
+  const optionsSnapshotKeyRef = useRef<string>("");
 
   const selectedKeys = useMemo(
     () =>
@@ -85,8 +113,10 @@ export function ResourceAutoselect({
     if (classId) params.set("classId", classId);
     params.set("limit", multiselect ? "4000" : "500");
 
+    const ac = new AbortController();
+
     setLoading(true);
-    fetch(`/api/orkg/resources?${params.toString()}`)
+    fetch(`/api/orkg/resources?${params.toString()}`, { signal: ac.signal })
       .then((res) => res.json())
       .then((data: { resources?: OrkgResourceOption[] }) => {
         const resList = data.resources ?? [];
@@ -133,9 +163,55 @@ export function ResourceAutoselect({
           setResources(resList);
         }
       })
-      .catch(() => setResources([]))
-      .finally(() => setLoading(false));
+      .catch((err: unknown) => {
+        if (
+          err &&
+          typeof err === "object" &&
+          "name" in err &&
+          (err as { name: string }).name === "AbortError"
+        ) {
+          return;
+        }
+        setResources([]);
+      })
+      .finally(() => {
+        if (!ac.signal.aborted) setLoading(false);
+      });
+
+    return () => {
+      ac.abort();
+    };
   }, [propertyId, classId, multiselect, selectOptions]);
+
+  useEffect(() => {
+    optionsSnapshotKeyRef.current = "";
+  }, [optionsScopeKey, propertyId, classId]);
+
+  useEffect(() => {
+    if (!onResourceOptionsSnapshot) return;
+
+    const toOpt = (r: OrkgResourceOption) => ({
+      value: r.id,
+      label: r.label,
+    });
+    const primary = resources.map(toOpt);
+    const extra = searchHits
+      .map(toOpt)
+      .filter((h) => !primary.some((p) => p.value === h.value));
+    const merged = [...primary, ...extra];
+    const key = merged.map((o) => o.value).join("\u0001");
+
+    if (key === optionsSnapshotKeyRef.current) return;
+
+    optionsSnapshotKeyRef.current = key;
+    onResourceOptionsSnapshot(merged, optionsScopeKey ?? propertyId);
+  }, [
+    resources,
+    searchHits,
+    onResourceOptionsSnapshot,
+    optionsScopeKey,
+    propertyId,
+  ]);
 
   /** Debounced ORKG label search while typing (multiselect only; single-select shows selected label in input). */
   useEffect(() => {
@@ -344,15 +420,28 @@ export function ResourceAutoselect({
   if (loading) {
     return (
       <div className="flex flex-col gap-1.5">
-        <div className="space-y-2">
-          <FieldLabel classId={classId} label={label} propertyId={propertyId} />
+        {!hideLabel ? (
+          <div className="space-y-2">
+            <FieldLabel
+              classId={classId}
+              label={label}
+              propertyId={propertyId}
+            />
+            <div className="flex items-center gap-3 rounded-lg border border-default-200 bg-default-50/50 px-4 py-3">
+              <Spinner color="default" size="sm" />
+              <span className="text-sm text-default-500">
+                Loading ORKG options...
+              </span>
+            </div>
+          </div>
+        ) : (
           <div className="flex items-center gap-3 rounded-lg border border-default-200 bg-default-50/50 px-4 py-3">
             <Spinner color="default" size="sm" />
             <span className="text-sm text-default-500">
               Loading ORKG options...
             </span>
           </div>
-        </div>
+        )}
         <Link
           isExternal
           aria-label="Create new resource in ORKG"
@@ -373,7 +462,11 @@ export function ResourceAutoselect({
 
   return (
     <div className="flex flex-col gap-1.5">
-      <FieldLabel classId={classId} label={label} propertyId={propertyId} />
+      {!hideLabel ? (
+        <FieldLabel classId={classId} label={label} propertyId={propertyId} />
+      ) : (
+        <span className="sr-only">{label}</span>
+      )}
 
       {multiselect && selectedKeys.length > 0 && (
         <div className="mb-1 flex flex-wrap gap-2">
@@ -481,14 +574,7 @@ export function ResourceAutoselect({
         {mergedResources.map((r) => {
           const orkgUrl = getOrkgResourceLinkFromIri(r.id);
           const displayLabel = r.label || r.id.split("/").pop() || r.id;
-          const shortId = orkgResourceIriTail(r.id);
-          const descriptionParts = [`ID: ${shortId}`];
-
-          if (r.creator) {
-            descriptionParts.push(`Created by: ${r.creator}`);
-          }
-
-          const description = descriptionParts.join(" · ");
+          const description = formatOrkgOptionDescription(r);
 
           return (
             <AutocompleteItem
@@ -523,7 +609,7 @@ export function ResourceAutoselect({
                   </Link>
                 ) : undefined
               }
-              textValue={`${displayLabel} ${shortId}`}
+              textValue={`${displayLabel} ${description}`}
             >
               {displayLabel}
             </AutocompleteItem>

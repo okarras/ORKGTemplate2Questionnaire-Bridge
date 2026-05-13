@@ -58,9 +58,16 @@ export async function POST(request: Request) {
       maxOutputTokens: maxTokens,
     });
 
+    const reasoningText =
+      typeof result.reasoningText === "string"
+        ? result.reasoningText.trim()
+        : "";
+    /** Only chain-of-thought from reasoning-capable models — never `finishReason` ("stop", etc.). */
+    const reasoning = reasoningText.length > 0 ? reasoningText : undefined;
+
     return NextResponse.json({
       text: result.text,
-      reasoning: result.finishReason,
+      reasoning,
       usage: result.usage
         ? {
             promptTokens: result.usage.inputTokens,

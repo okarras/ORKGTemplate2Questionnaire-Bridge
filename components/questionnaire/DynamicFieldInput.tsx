@@ -10,6 +10,7 @@ import { RadioGroup, Radio } from "@heroui/radio";
 
 import { ResourceAutoselect } from "./ResourceAutoselect";
 import { FieldLabel } from "./FieldLabel";
+import { normalizeCheckboxFormValue } from "./questionnaire-form-value-helpers";
 
 type FieldValue = string | number | boolean | string[];
 
@@ -30,6 +31,20 @@ interface DynamicFieldInputProps {
   selectOptions?: SelectOption[];
   /** Config for scale/rating fields (Likert-style) */
   scaleConfig?: ScaleConfig;
+  /**
+   * When true, the visible FieldLabel is omitted (e.g. label already shown on an accordion trigger).
+   * Controls keep an accessible name via aria-label / sr-only text.
+   */
+  hideLabel?: boolean;
+  /** When set with `onResourceOptionsSnapshot`, identifies this field for the host (e.g. full property path). */
+  resourceOptionsScope?: string;
+  /**
+   * ORKG resource list snapshot for AI / prompts. Second argument is `resourceOptionsScope ?? propertyId`.
+   */
+  onResourceOptionsSnapshot?: (
+    options: SelectOption[],
+    scopeKey: string,
+  ) => void;
 }
 
 const fieldInputClass = "w-full data-[focus=true]:border-primary";
@@ -58,9 +73,17 @@ export function DynamicFieldInput({
   createLink,
   selectOptions = DEFAULT_SELECT_OPTIONS,
   scaleConfig = { min: 1, max: 5 },
+  hideLabel = false,
+  resourceOptionsScope,
+  onResourceOptionsSnapshot,
 }: DynamicFieldInputProps) {
   const id = `field-${propertyId}`;
   const multiselect = isOneToMany(cardinality);
+  const visibleLabel = hideLabel ? (
+    <span className="sr-only">{label}</span>
+  ) : (
+    <FieldLabel classId={classId} label={label} propertyId={propertyId} />
+  );
 
   switch (inputType) {
     case "text":
@@ -71,13 +94,7 @@ export function DynamicFieldInput({
             inputWrapper: inputWrapperClass,
           }}
           id={id}
-          label={
-            <FieldLabel
-              classId={classId}
-              label={label}
-              propertyId={propertyId}
-            />
-          }
+          label={visibleLabel}
           labelPlacement="outside"
           placeholder={placeholder ?? `Enter ${label.toLowerCase()}...`}
           value={typeof value === "string" ? value : ""}
@@ -93,13 +110,7 @@ export function DynamicFieldInput({
             inputWrapper: inputWrapperClass,
           }}
           id={id}
-          label={
-            <FieldLabel
-              classId={classId}
-              label={label}
-              propertyId={propertyId}
-            />
-          }
+          label={visibleLabel}
           labelPlacement="outside"
           minRows={3}
           placeholder={placeholder ?? `Enter ${label.toLowerCase()}...`}
@@ -116,13 +127,7 @@ export function DynamicFieldInput({
             inputWrapper: inputWrapperClass,
           }}
           id={id}
-          label={
-            <FieldLabel
-              classId={classId}
-              label={label}
-              propertyId={propertyId}
-            />
-          }
+          label={visibleLabel}
           labelPlacement="outside"
           placeholder={placeholder ?? `Enter number...`}
           type="number"
@@ -142,18 +147,13 @@ export function DynamicFieldInput({
     case "select":
       return (
         <Select
+          aria-label={hideLabel ? label : undefined}
           className={fieldInputClass}
           classNames={{
             trigger: inputWrapperClass,
           }}
           id={id}
-          label={
-            <FieldLabel
-              classId={classId}
-              label={label}
-              propertyId={propertyId}
-            />
-          }
+          label={hideLabel ? undefined : visibleLabel}
           labelPlacement="outside"
           placeholder={
             placeholder ??
@@ -184,11 +184,25 @@ export function DynamicFieldInput({
           selectionMode={multiselect ? "multiple" : "single"}
           onSelectionChange={(keys) => {
             if (multiselect) {
-              onChange(Array.from(keys) as string[]);
-            } else {
-              const selected = Array.from(keys)[0];
+              if (keys === "all") {
+                onChange(selectOptions.map((o) => o.value));
 
-              onChange(selected ? String(selected) : "");
+                return;
+              }
+              const next =
+                keys instanceof Set ? Array.from(keys).map(String) : [];
+
+              onChange(next);
+            } else {
+              if (keys === "all") {
+                onChange("");
+
+                return;
+              }
+              const selected =
+                keys instanceof Set ? Array.from(keys)[0] : undefined;
+
+              onChange(selected != null ? String(selected) : "");
             }
           }}
         >
@@ -219,11 +233,15 @@ export function DynamicFieldInput({
 
       return (
         <div className="flex flex-col gap-3">
-          <FieldLabel
-            classId={undefined}
-            label={label}
-            propertyId={propertyId}
-          />
+          {hideLabel ? (
+            <span className="sr-only">{label}</span>
+          ) : (
+            <FieldLabel
+              classId={undefined}
+              label={label}
+              propertyId={propertyId}
+            />
+          )}
           <RadioGroup
             classNames={{ wrapper: "flex-wrap gap-2" }}
             orientation="horizontal"
@@ -244,17 +262,24 @@ export function DynamicFieldInput({
       );
     }
 
-    case "checkbox":
+    case "checkbox": {
+      const coerced = normalizeCheckboxFormValue(value);
+
       return (
         <Checkbox
           classNames={{ base: "max-w-full", label: "text-primary/90" }}
           id={id}
-          isSelected={value === true}
+          isSelected={coerced === true}
           onValueChange={(checked) => onChange(checked)}
         >
-          <FieldLabel classId={classId} label={label} propertyId={propertyId} />
+          {hideLabel ? (
+            <span className="sr-only">{label}</span>
+          ) : (
+            <FieldLabel classId={classId} label={label} propertyId={propertyId} />
+          )}
         </Checkbox>
       );
+    }
 
     case "date":
       return (
@@ -264,13 +289,7 @@ export function DynamicFieldInput({
             inputWrapper: inputWrapperClass,
           }}
           id={id}
-          label={
-            <FieldLabel
-              classId={classId}
-              label={label}
-              propertyId={propertyId}
-            />
-          }
+          label={visibleLabel}
           labelPlacement="outside"
           type="date"
           value={typeof value === "string" ? value : ""}
@@ -282,13 +301,16 @@ export function DynamicFieldInput({
       return (
         <ResourceAutoselect
           classId={classId}
+          hideLabel={hideLabel}
           label={label}
           multiselect={multiselect}
+          optionsScopeKey={resourceOptionsScope ?? propertyId}
           placeholder={placeholder}
           propertyId={propertyId}
           selectOptions={selectOptions}
           value={value}
           onChange={onChange}
+          onResourceOptionsSnapshot={onResourceOptionsSnapshot}
         />
       );
 
@@ -300,13 +322,7 @@ export function DynamicFieldInput({
             inputWrapper: inputWrapperClass,
           }}
           id={id}
-          label={
-            <FieldLabel
-              classId={classId}
-              label={label}
-              propertyId={propertyId}
-            />
-          }
+          label={visibleLabel}
           labelPlacement="outside"
           placeholder={placeholder ?? `Enter ${label.toLowerCase()}...`}
           value={typeof value === "string" ? value : ""}

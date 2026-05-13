@@ -85,6 +85,21 @@ export function QuestionnaireSortableBlock({
   removeCustomBlock,
   removeBlock,
 }: QuestionnaireSortableBlockProps) {
+  const propertyMeta =
+    block.kind === "property" ? mapping[block.id] : undefined;
+  const sectionSummaryTitle =
+    block.kind === "property"
+      ? (propertyMeta?.label ?? block.id)
+      : (() => {
+          const custom = customBlocks[block.id];
+
+          if (!custom) return "Block";
+          if (custom.type === "text") return custom.heading ?? "Text block";
+          if (custom.type === "html") return "HTML block";
+          if (custom.type === "section") return custom.title ?? "Section";
+          return custom.label ?? "Custom field";
+        })();
+
   const blockContent =
     block.kind === "property" ? (
       <>
@@ -99,6 +114,7 @@ export function QuestionnaireSortableBlock({
           propertyId={block.id}
           propertyPath={block.id}
           removedBuiltinProperties={removedBuiltinProperties}
+          sectionTitleRenderedExternally
           value={getValue(
             block.id,
             !!mapping[block.id]?.subtemplate_properties?.length,
@@ -225,10 +241,25 @@ export function QuestionnaireSortableBlock({
       key={sortId}
       className="group/block rounded-xl border border-default-100 bg-background p-5 transition-colors hover:border-default-200"
     >
-      <SortableBlockWrapper disabled={!editMode} id={sortId}>
-        <div className="flex w-full items-start justify-between gap-4">
-          <div className="min-w-0 flex-1">{blockContent}</div>
-          <Button
+        <SortableBlockWrapper disabled={!editMode} id={sortId}>
+          <div className="flex w-full items-start justify-between gap-4">
+            <div className="min-w-0 flex-1">
+              <details className="w-full" open>
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-2 rounded-lg px-1 py-1.5 text-left text-base font-semibold text-default-900 outline-none hover:bg-default-50 [&::-webkit-details-marker]:hidden">
+                  <span className="truncate">{sectionSummaryTitle}</span>
+                  <span
+                    aria-hidden
+                    className="shrink-0 text-xs text-default-400"
+                  >
+                    ▼
+                  </span>
+                </summary>
+                <div className="mt-3 border-t border-default-100 pt-3">
+                  {blockContent}
+                </div>
+              </details>
+            </div>
+            <Button
             className={
               editMode
                 ? "opacity-70 hover:opacity-100"

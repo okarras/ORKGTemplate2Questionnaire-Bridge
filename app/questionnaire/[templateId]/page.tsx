@@ -9,7 +9,6 @@ import {
   generateTemplateMapping,
 } from "@/lib/orkg-templates";
 import { enrichTemplateMapping } from "@/lib/preprocessing/enrich-template-mapping";
-import { orkgToScidQuestTemplate } from "@/lib/orkg-to-scidquest-adapter";
 import { QuestionnairePageModeSwitcher } from "@/components/questionnaire/QuestionnairePageModeSwitcher";
 
 interface QuestionnairePageProps {
@@ -66,17 +65,10 @@ export default async function QuestionnairePage({
     );
   }
 
-  const scidQuestTemplate = await orkgToScidQuestTemplate(
-    mapping,
-    templateId,
-    label,
-  );
-
   return (
     <QuestionnairePageModeSwitcher
       label={label}
       mapping={mapping}
-      scidQuestTemplate={scidQuestTemplate}
       targetClassId={targetClassId}
       targetClassLabel={targetClassLabel}
       templateId={templateId}

@@ -37,6 +37,39 @@ export function orkgResourceIriTail(iri: string): string {
   return n.split("/").pop() ?? n;
 }
 
+/**
+ * Short entity line for UI (e.g. dropdown subtitles): `Resource R123` or `Class C456`.
+ * Handles ORKG class IRIs and resource IRIs / bare R/C tails.
+ */
+export function orkgEntityKindLineFromIri(iri: string): string {
+  const raw = iri?.trim() ?? "";
+
+  if (!raw) return "";
+
+  const lower = raw.toLowerCase();
+
+  if (lower.includes("/orkg/class/")) {
+    const seg = raw.split("/").pop() ?? "";
+    const m = seg.match(/^C(\d+)$/i);
+
+    return m ? `Class C${m[1]}` : `Class ${seg}`;
+  }
+
+  const n = normalizeOrkgResourceIri(raw);
+  const tail = n.startsWith(ORKG_RESOURCE_IRI_PREFIX)
+    ? n.slice(ORKG_RESOURCE_IRI_PREFIX.length)
+    : (raw.split("/").pop() ?? raw);
+  const c = tail.match(/^C(\d+)$/i);
+
+  if (c) return `Class C${c[1]}`;
+
+  const r = tail.match(/^R(\d+)$/i);
+
+  if (r) return `Resource R${r[1]}`;
+
+  return tail ? `Resource ${tail}` : raw;
+}
+
 export function resourceIrisEquivalent(a: string, b: string): boolean {
   return normalizeOrkgResourceIri(a) === normalizeOrkgResourceIri(b);
 }

@@ -210,7 +210,12 @@ export function parseValueTypeResult(result: SparqlResult): OrkgValueType {
 function literalDatatypePreference(uri: string): number {
   const u = uri.toLowerCase();
 
-  if (u.endsWith("#boolean")) return 100;
+  if (
+    u.endsWith("#boolean") ||
+    u.endsWith("/boolean") ||
+    /(^|[#/])boolean$/i.test(u)
+  )
+    return 100;
   if (
     u.endsWith("#integer") ||
     u.endsWith("#int") ||

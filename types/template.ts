@@ -28,6 +28,11 @@ export interface SubtemplateProperty {
   /** Link to create a new ORKG resource of this class (e.g. https://orkg.org/resources/create?classes={class_id}) */
   create_link?: string;
   subtemplate_properties?: Record<string, SubtemplateProperty>;
+  /**
+   * ORKG template API `property.datatype` (design-time). When set, it overrides
+   * misleading global SPARQL aggregates for the same predicate id.
+   */
+  orkg_template_datatype?: { id: string; label?: string };
 }
 
 /** Property enriched with SPARQL-detected value type from preprocessing */

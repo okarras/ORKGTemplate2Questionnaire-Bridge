@@ -2,13 +2,23 @@ const path = require("path");
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  distDir: "dist",
-  serverExternalPackages: ["canvas", "pdfjs-dist"],
+  transpilePackages: ["@orkg/scidquest"],
+  serverExternalPackages: ["canvas", "pdfjs-dist", "onnxruntime-node"],
   webpack: (config, { isServer }) => {
-    // Resolve React and ReactDOM to the main Next.js project's versions strictly
-    // to avoid the ReactCurrentDispatcher dual-instance issue during SSR or client rendering.
+    const transformersWeb = path.join(
+      __dirname,
+      "node_modules",
+      "@huggingface",
+      "transformers",
+      "dist",
+      "transformers.web.js",
+    );
+
+    // ScidQuest loads semantic chunking in the browser; force the web build so
+    // Next/webpack does not resolve the package "node" export (onnxruntime-node .node binaries).
     config.resolve.alias = {
       ...config.resolve.alias,
+      "@huggingface/transformers": transformersWeb,
       "react$": path.join(__dirname, "node_modules", "react"),
       "react-dom$": path.join(__dirname, "node_modules", "react-dom"),
     };

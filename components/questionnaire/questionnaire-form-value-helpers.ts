@@ -9,6 +9,78 @@ import { getInputTypeFromValueType } from "./input-type-utils";
 
 type PropertyValue = string | number | boolean | string[];
 
+/** Normalize JSON/localStorage string forms to real booleans for checkbox fields. */
+export function normalizeCheckboxFormValue(value: FormValue): boolean | FormValue {
+  if (value === true || value === false) return value;
+  if (typeof value === "number") {
+    if (value === 1) return true;
+    if (value === 0) return false;
+  }
+  if (typeof value === "string") {
+    const s = value.trim().toLowerCase();
+    if (s === "true" || s === "1" || s === "yes" || s === "on") return true;
+    if (s === "false" || s === "0" || s === "no" || s === "off" || s === "")
+      return false;
+  }
+
+  return value;
+}
+
+function coerceLeafValue(
+  value: FormValue,
+  prop: EnrichedSubtemplateProperty,
+): FormValue {
+  const subs = prop.subtemplate_properties;
+  if (subs && Object.keys(subs).length > 0) {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) {
+      return value;
+    }
+    const out: Record<string, FormValue> = {
+      ...(value as Record<string, FormValue>),
+    };
+
+    for (const [sk, sub] of Object.entries(subs)) {
+      if (sk in out) {
+        out[sk] = coerceLeafValue(out[sk]!, sub as EnrichedSubtemplateProperty);
+      }
+    }
+
+    const rootLeaf = getInputTypeFromValueType(
+      prop.valueType,
+      prop.literalDatatype,
+    );
+
+    if (rootLeaf === "checkbox" && "_" in out) {
+      out._ = normalizeCheckboxFormValue(out._!) as FormValue;
+    }
+
+    return out;
+  }
+
+  const leaf = getInputTypeFromValueType(prop.valueType, prop.literalDatatype);
+
+  if (leaf === "checkbox") {
+    return normalizeCheckboxFormValue(value) as FormValue;
+  }
+
+  return value;
+}
+
+/** Coerce persisted/imported values to match declared ORKG literal types (e.g. boolean). */
+export function coerceFormValuesToDeclaredTypes(
+  mapping: EnrichedTemplateMapping,
+  values: Record<string, FormValue>,
+): Record<string, FormValue> {
+  const out: Record<string, FormValue> = { ...values };
+
+  for (const [id, prop] of Object.entries(mapping)) {
+    if (!(id in out)) continue;
+    out[id] = coerceLeafValue(out[id]!, prop as EnrichedSubtemplateProperty);
+  }
+
+  return out;
+}
+
 function createEmptyValue(prop: EnrichedSubtemplateProperty): FormValue {
   if (
     prop.subtemplate_properties &&
@@ -97,6 +169,14 @@ export function inflateFromJson(
       result[k] = inflateFromJson(srcObj[k], subProp);
     }
 
+    const enr = prop as EnrichedSubtemplateProperty;
+
+    if (getInputTypeFromValueType(enr.valueType, enr.literalDatatype) === "checkbox") {
+      result._ = normalizeCheckboxFormValue(
+        (result._ === "" ? false : (result._ as FormValue)) as FormValue,
+      ) as PropertyValue;
+    }
+
     return result;
   }
 
@@ -110,7 +190,17 @@ export function inflateFromJson(
     typeof src === "boolean" ||
     Array.isArray(src)
   ) {
-    return src as FormValue;
+    const v = src as FormValue;
+    const leaf = getInputTypeFromValueType(
+      (prop as EnrichedSubtemplateProperty).valueType,
+      (prop as EnrichedSubtemplateProperty).literalDatatype,
+    );
+
+    if (leaf === "checkbox") {
+      return normalizeCheckboxFormValue(v) as FormValue;
+    }
+
+    return v;
   }
 
   return "";
