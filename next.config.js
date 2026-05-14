@@ -2,6 +2,9 @@ const path = require("path");
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Pin tracing to this app when another package-lock.json exists in a parent folder
+  // on disk (Next would otherwise infer the wrong workspace root).
+  outputFileTracingRoot: path.join(__dirname),
   transpilePackages: ["@orkg/scidquest"],
   serverExternalPackages: ["canvas", "pdfjs-dist", "onnxruntime-node"],
   webpack: (config, { isServer }) => {
