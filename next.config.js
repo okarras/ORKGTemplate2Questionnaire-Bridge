@@ -6,7 +6,7 @@ const nextConfig = {
   // on disk (Next would otherwise infer the wrong workspace root).
   outputFileTracingRoot: path.join(__dirname),
   transpilePackages: ["@orkg/scidquest"],
-  serverExternalPackages: ["canvas", "pdfjs-dist", "onnxruntime-node"],
+  serverExternalPackages: ["canvas", "pdfjs-dist"],
   webpack: (config, { isServer }) => {
     const transformersWeb = path.join(
       __dirname,
