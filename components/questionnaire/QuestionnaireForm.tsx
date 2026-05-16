@@ -18,6 +18,7 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type ChangeEvent,
@@ -46,6 +47,7 @@ import {
   buildInitialValues,
   coerceFormValuesToDeclaredTypes,
   inflateFromJson,
+  mergeFillModeEmptyDefaults,
 } from "./questionnaire-form-value-helpers";
 import { downloadQuestionnaireJsonExport } from "./questionnaire-export-json";
 import { exportQuestionnaireToPdf } from "./questionnaire-export-pdf";
@@ -182,6 +184,14 @@ export function QuestionnaireForm({
     nestedCustomBlocks,
     removedBuiltinProperties = [],
   } = structure;
+
+  const displayValues = useMemo(
+    () =>
+      editMode
+        ? values
+        : mergeFillModeEmptyDefaults(values, mapping, fieldOverrides),
+    [editMode, values, mapping, fieldOverrides],
+  );
 
   const onDraftPersistRef = useRef(onDraftPersist);
 
@@ -505,13 +515,13 @@ export function QuestionnaireForm({
   );
   const getValue = useCallback(
     (propertyId: string, hasSub: boolean): FormValue => {
-      const v = values[propertyId];
+      const v = displayValues[propertyId];
 
       if (v === undefined) return hasSub ? { _: "" } : "";
 
       return v;
     },
-    [values],
+    [displayValues],
   );
 
   const setValue = useCallback(
@@ -525,14 +535,25 @@ export function QuestionnaireForm({
     (propertyPath: string, overrides: Partial<FieldOverrides[string]>) => {
       setStructure((prev) => {
         const current = prev.fieldOverrides[propertyPath] ?? {};
-        const merged = { ...current, ...overrides };
+        const merged: FieldOverrides[string] = { ...current, ...overrides };
+
+        const overrideKeys = Object.keys(
+          overrides,
+        ) as (keyof FieldOverrides[string])[];
+
+        for (const k of overrideKeys) {
+          if (overrides[k] === undefined) {
+            delete merged[k];
+          }
+        }
 
         if (
           merged.label === undefined &&
           merged.description === undefined &&
           merged.inputType === undefined &&
           merged.selectOptions === undefined &&
-          merged.scaleConfig === undefined
+          merged.scaleConfig === undefined &&
+          merged.emptyDefault === undefined
         ) {
           const next = { ...prev.fieldOverrides };
 
@@ -683,7 +704,7 @@ export function QuestionnaireForm({
         templateId,
         label,
         mapping,
-        values,
+        values: mergeFillModeEmptyDefaults(values, mapping, fieldOverrides),
         orderedBlocks,
         customBlocks,
         fieldOverrides,
@@ -805,7 +826,7 @@ export function QuestionnaireForm({
                 setValue={setValue}
                 sortId={getBlockSortId(block)}
                 updateCustomBlock={updateCustomBlock}
-                values={values}
+                values={displayValues}
                 onFieldOverride={onFieldOverride}
               />
             ))}
@@ -815,6 +836,7 @@ export function QuestionnaireForm({
 
       {showSubmitButton && (
         <OrkgSubmitModal
+          fieldOverrides={fieldOverrides}
           isOpen={showSubmitModal}
           mapping={mapping}
           targetClassId={targetClassId}

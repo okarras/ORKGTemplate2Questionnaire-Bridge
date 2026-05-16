@@ -26,6 +26,11 @@ export type FieldOverrides = Record<
     inputType?: InputType;
     selectOptions?: SelectOption[];
     scaleConfig?: ScaleConfig;
+    /**
+     * When set, fill mode treats this path as answered with this value if the user left it empty.
+     * Stored as a string (single value); one-to-many uses comma-separated values or IRIs.
+     */
+    emptyDefault?: string;
   }
 >;
 

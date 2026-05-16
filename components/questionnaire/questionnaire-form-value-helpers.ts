@@ -3,7 +3,7 @@ import type {
   EnrichedTemplateMapping,
   SubtemplateProperty,
 } from "@/types/template";
-import type { FormValue } from "./questionnaire-form-types";
+import type { FieldOverrides, FormValue } from "./questionnaire-form-types";
 
 import { getInputTypeFromValueType } from "./input-type-utils";
 
@@ -114,6 +114,133 @@ export function buildInitialValues(
   }
 
   return values;
+}
+
+function isScalarFormEmpty(v: FormValue): boolean {
+  if (v === undefined || v === null) return true;
+  if (typeof v === "string") return v.trim() === "";
+  if (Array.isArray(v)) return v.length === 0;
+
+  return false;
+}
+
+function applyEmptyDefaultToLeaf(
+  v: FormValue,
+  prop: EnrichedSubtemplateProperty,
+  def: string,
+): FormValue {
+  const trimmed = def.trim();
+
+  if (!trimmed) return v;
+  const many = prop.cardinality?.toLowerCase() === "one to many";
+  const leaf = getInputTypeFromValueType(
+    prop.valueType,
+    prop.literalDatatype,
+  );
+
+  if (many && Array.isArray(v)) {
+    if (v.length > 0) return v;
+    const parts = trimmed
+      .split(/[,|]/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    if (parts.length === 0) return v;
+
+    if (leaf === "number") {
+      return parts.map((p) => {
+        const n = Number(p);
+
+        return Number.isFinite(n) ? n : p;
+      }) as FormValue;
+    }
+
+    return parts as FormValue;
+  }
+
+  if (many) return v;
+
+  if (!isScalarFormEmpty(v)) return v;
+
+  if (leaf === "checkbox") {
+    const t = trimmed.toLowerCase();
+
+    return t === "true" || t === "1" || t === "yes";
+  }
+
+  if (leaf === "number") {
+    const n = Number(trimmed);
+
+    return Number.isFinite(n) ? n : trimmed;
+  }
+
+  return trimmed;
+}
+
+/**
+ * Deep-merge `fieldOverrides[*].emptyDefault` into property answers for fill mode / export / submit.
+ * Only keys present in `mapping` are transformed; custom `__custom_*` entries are left unchanged.
+ */
+export function mergeFillModeEmptyDefaults(
+  values: Record<string, FormValue>,
+  mapping: EnrichedTemplateMapping,
+  fieldOverrides: FieldOverrides,
+): Record<string, FormValue> {
+  function walk(
+    v: FormValue,
+    prop: EnrichedSubtemplateProperty,
+    path: string,
+  ): FormValue {
+    const o = fieldOverrides[path];
+    const subs = prop.subtemplate_properties;
+
+    if (subs && Object.keys(subs).length > 0) {
+      if (typeof v !== "object" || v === null || Array.isArray(v)) return v;
+      const obj: Record<string, FormValue> = {
+        ...(v as Record<string, FormValue>),
+      };
+
+      for (const [sk, sub] of Object.entries(subs)) {
+        const subPath = `${path}.${sk}`;
+
+        if (sk in obj) {
+          obj[sk] = walk(obj[sk]!, sub as EnrichedSubtemplateProperty, subPath);
+        }
+      }
+
+      const def = o?.emptyDefault;
+
+      if (def !== undefined && "_" in obj) {
+        const rootProp = { ...prop, subtemplate_properties: undefined };
+        const cur = obj._;
+
+        if (isScalarFormEmpty(cur as FormValue)) {
+          obj._ = applyEmptyDefaultToLeaf(
+            cur as FormValue,
+            rootProp as EnrichedSubtemplateProperty,
+            def,
+          ) as FormValue;
+        }
+      }
+
+      return obj;
+    }
+
+    const def = o?.emptyDefault;
+
+    if (def === undefined) return v;
+
+    return applyEmptyDefaultToLeaf(v, prop, def) as FormValue;
+  }
+
+  const out: Record<string, FormValue> = { ...values };
+
+  for (const id of Object.keys(mapping)) {
+    if (!(id in out)) continue;
+    out[id] = walk(out[id]!, mapping[id]!, id);
+  }
+
+  return out;
 }
 
 export function flattenForJson(

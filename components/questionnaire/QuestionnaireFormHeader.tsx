@@ -26,6 +26,22 @@ export function QuestionnaireFormHeader({
               {templateId}
             </code>
           </p>
+          {!editMode && (
+            <p className="mt-2 max-w-xl text-xs leading-relaxed text-default-500">
+              With{" "}
+              <span className="font-medium text-default-700">Fill mode</span> on
+              (switch), use{" "}
+              <span className="font-medium text-default-700">
+                Save current value as default
+              </span>{" "}
+              or{" "}
+              <span className="font-medium text-default-700">
+                choose default from list
+              </span>{" "}
+              on dropdown fields so preview, PDF, and ORKG submit can use a
+              value when you leave an answer empty.
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium text-default-600">
@@ -33,9 +49,9 @@ export function QuestionnaireFormHeader({
           </span>
           <Switch
             classNames={{ wrapper: "group-data-[selected=true]:bg-primary" }}
-            isSelected={editMode}
+            isSelected={!editMode}
             size="md"
-            onValueChange={onEditModeChange}
+            onValueChange={(fillModeOn) => onEditModeChange(!fillModeOn)}
           />
         </div>
       </div>

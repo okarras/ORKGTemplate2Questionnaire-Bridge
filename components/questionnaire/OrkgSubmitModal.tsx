@@ -1,7 +1,7 @@
 "use client";
 
 import type { EnrichedTemplateMapping } from "@/types/template";
-import type { FormValue } from "./QuestionnaireForm";
+import type { FieldOverrides, FormValue } from "./questionnaire-form-types";
 
 import { useState, useCallback, useEffect } from "react";
 import { Button } from "@heroui/button";
@@ -9,6 +9,7 @@ import { Input } from "@heroui/input";
 
 import { buildAnswerTriples } from "@/lib/orkg-instance-builder";
 import { getSandboxResourceLink } from "@/lib/orkg-links";
+import { mergeFillModeEmptyDefaults } from "./questionnaire-form-value-helpers";
 
 interface OrkgSubmitModalProps {
   isOpen: boolean;
@@ -18,6 +19,7 @@ interface OrkgSubmitModalProps {
   templateLabel: string;
   mapping: EnrichedTemplateMapping;
   values: Record<string, FormValue>;
+  fieldOverrides?: FieldOverrides;
 }
 
 type SubmitState =
@@ -40,6 +42,7 @@ export function OrkgSubmitModal({
   templateLabel,
   mapping,
   values,
+  fieldOverrides = {},
 }: OrkgSubmitModalProps) {
   const today = new Date().toISOString().slice(0, 10);
   const [resourceLabel, setResourceLabel] = useState(
@@ -142,7 +145,12 @@ export function OrkgSubmitModal({
 
     // Step 2: Build triples and submit
     try {
-      const answers = buildAnswerTriples(mapping, values);
+      const mergedValues = mergeFillModeEmptyDefaults(
+        values,
+        mapping,
+        fieldOverrides,
+      );
+      const answers = buildAnswerTriples(mapping, mergedValues);
       const submitRes = await fetch("/api/orkg-sandbox/submit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -211,6 +219,7 @@ export function OrkgSubmitModal({
     targetClassId,
     mapping,
     values,
+    fieldOverrides,
     savedToken,
   ]);
 

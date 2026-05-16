@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { Button } from "@heroui/button";
 import {
   Dropdown,
@@ -22,11 +23,22 @@ export function AddBlockDropdown({
     parentSectionId?: string,
   ) => void;
 }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+
   return (
-    <Dropdown>
+    <Dropdown isOpen={menuOpen} onOpenChange={setMenuOpen}>
       <DropdownTrigger>
         <Button
           className="border-dashed border-2 border-default-400 font-medium text-default-600 hover:border-primary hover:bg-primary/5 hover:text-primary"
+          endContent={
+            <span
+              className={`text-[10px] text-default-400 transition-transform duration-200 ${
+                menuOpen ? "rotate-180" : ""
+              }`}
+            >
+              ▼
+            </span>
+          }
           size="md"
           variant="bordered"
         >

@@ -26,6 +26,8 @@ import {
   DropdownTrigger,
 } from "@heroui/dropdown";
 
+import { ResourceLabelCache } from "@/lib/resource-label-cache";
+
 import {
   CustomFieldBlock,
   HtmlBlock,
@@ -69,6 +71,75 @@ function toPropertyValue(v: FormValue | undefined): PropertyValue {
   if (Array.isArray(v)) return v;
 
   return "";
+}
+
+function summaryForStoredEmptyDefault(
+  stored: string,
+  inputType: InputType,
+  selectOptions?: SelectOption[],
+): string {
+  const t = stored.trim();
+
+  if (!t) return stored;
+  const parts = t
+    .split(/[,|]/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  if (parts.length === 0) return stored;
+
+  if (inputType === "select" && selectOptions?.length) {
+    return parts
+      .map(
+        (p) =>
+          selectOptions.find((o) => o.value === p || o.label === p)?.label ?? p,
+      )
+      .join(", ");
+  }
+
+  if (inputType === "resource") {
+    return parts
+      .map((p) => ResourceLabelCache.get(p) ?? p.split("/").pop() ?? p)
+      .join(", ");
+  }
+
+  return stored;
+}
+
+function serializeCurrentForEmptyDefault(
+  v: PropertyValue,
+  inputType: InputType,
+  cardinality?: string,
+): string | null {
+  const many = cardinality?.toLowerCase() === "one to many";
+
+  if (many && Array.isArray(v)) {
+    if (v.length === 0) return null;
+
+    return v.map(String).join(",");
+  }
+
+  if (inputType === "checkbox") {
+    if (typeof v === "boolean") return v ? "true" : "false";
+    if (v === "true" || v === "false") return v;
+
+    return null;
+  }
+
+  if (inputType === "number") {
+    if (v === "" || v === undefined) return null;
+    if (typeof v === "number" && !Number.isNaN(v)) return String(v);
+
+    return String(v);
+  }
+
+  if (typeof v === "string") {
+    const s = v.trim();
+
+    return s.length > 0 ? s : null;
+  }
+
+  return null;
 }
 
 interface TemplatePropertyRendererProps {
@@ -161,6 +232,7 @@ export function TemplatePropertyRenderer({
     max: 5,
   });
   const [isFilterDialogOpen, setIsFilterDialogOpen] = useState(false);
+  const [nestedAddMenuOpen, setNestedAddMenuOpen] = useState(false);
   const [orkgResourceOptionsForAi, setOrkgResourceOptionsForAi] = useState<
     SelectOption[]
   >([]);
@@ -245,6 +317,67 @@ export function TemplatePropertyRenderer({
           (property as EnrichedSubtemplateProperty).literalDatatype,
         )
       : getInputTypeForProperty(propertyId);
+
+  const fillModeDefaultControls = useMemo(() => {
+    if (editMode || !onFieldOverride) return undefined;
+    const stored = overrides?.emptyDefault;
+    const many = property.cardinality?.toLowerCase() === "one to many";
+    const dedupedPickOpts: SelectOption[] = [];
+    const seenPick = new Set<string>();
+
+    for (const o of selectOptions ?? []) {
+      const k = String(o.value);
+
+      if (seenPick.has(k)) continue;
+      seenPick.add(k);
+      dedupedPickOpts.push(o);
+    }
+
+    const onClearAnswer = () => {
+      if (many) onChange([]);
+      else if (inputType === "checkbox") onChange(false);
+      else onChange("");
+    };
+
+    return {
+      emptyDefault: stored,
+      emptyDefaultSummary:
+        stored && stored.trim()
+          ? summaryForStoredEmptyDefault(stored, inputType, selectOptions)
+          : "",
+      onSaveFromCurrent: () => {
+        const serialized = serializeCurrentForEmptyDefault(
+          value,
+          inputType,
+          property.cardinality,
+        );
+
+        if (!serialized) return;
+        onFieldOverride(propertyPath, { emptyDefault: serialized });
+      },
+      onClear: () =>
+        onFieldOverride(propertyPath, { emptyDefault: undefined }),
+      onClearAnswer,
+      pickDefaultFromSelectOptions:
+        inputType === "select" && !many && dedupedPickOpts.length > 0
+          ? dedupedPickOpts
+          : undefined,
+      onPickDefaultOption:
+        inputType === "select" && !many
+          ? (v: string) => onFieldOverride(propertyPath, { emptyDefault: v })
+          : undefined,
+    };
+  }, [
+    editMode,
+    onFieldOverride,
+    overrides?.emptyDefault,
+    inputType,
+    selectOptions,
+    value,
+    property.cardinality,
+    propertyPath,
+    onChange,
+  ]);
 
   const handleSaveEdit = useCallback(() => {
     const payload: Partial<FieldOverrides[string]> = {
@@ -634,6 +767,7 @@ export function TemplatePropertyRenderer({
             cardinality={property.cardinality}
             classId={property.class_id}
             createLink={property.create_link}
+            fillModeDefaultControls={fillModeDefaultControls}
             hideLabel={hideControlDuplicateLabel}
             inputType={inputType}
             label={effectiveLabel}
@@ -653,8 +787,6 @@ export function TemplatePropertyRenderer({
   }
 
   // Property with nested subtemplate_properties
-  const nestedSubtemplateWithOwnTitle = depth > 0;
-
   const subFieldRows = (
     <>
       {Object.entries(property.subtemplate_properties!)
@@ -697,6 +829,12 @@ export function TemplatePropertyRenderer({
                     Remove
                   </Button>
                 )}
+                <span
+                  aria-hidden
+                  className="shrink-0 text-[10px] leading-none text-default-400 transition-transform duration-200 group-open/subfield:rotate-180"
+                >
+                  ▼
+                </span>
               </div>
             </summary>
             <div className="overflow-hidden rounded-b-lg border-t border-default-100 bg-background px-3 py-3">
@@ -764,6 +902,14 @@ export function TemplatePropertyRenderer({
 
         const nestedSummaryClass =
           "flex w-full cursor-pointer list-none items-center justify-between gap-2 border-b border-default-100 bg-default-50/70 px-3 py-2.5 text-left text-sm font-semibold text-default-900 hover:bg-default-50 [&::-webkit-details-marker]:hidden";
+        const summaryChevron = (
+          <span
+            aria-hidden
+            className="shrink-0 text-[10px] leading-none text-default-400 transition-transform duration-200 group-open/subfield:rotate-180"
+          >
+            ▼
+          </span>
+        );
 
         if (block.type === "text") {
           return (
@@ -772,7 +918,10 @@ export function TemplatePropertyRenderer({
               className="group/subfield rounded-lg border border-default-100 bg-content1 overflow-hidden"
             >
               <summary className={nestedSummaryClass}>
-                {block.heading ?? "Text block"}
+                <span className="min-w-0 flex-1 truncate">
+                  {block.heading ?? "Text block"}
+                </span>
+                {summaryChevron}
               </summary>
               <div className="border-t border-default-100 bg-background px-3 py-3">
                 <TextBlock
@@ -791,7 +940,10 @@ export function TemplatePropertyRenderer({
               key={blockId}
               className="group/subfield rounded-lg border border-default-100 bg-content1 overflow-hidden"
             >
-              <summary className={nestedSummaryClass}>{block.label}</summary>
+              <summary className={nestedSummaryClass}>
+                <span className="min-w-0 flex-1 truncate">{block.label}</span>
+                {summaryChevron}
+              </summary>
               <div className="border-t border-default-100 bg-background px-3 py-3">
                 <CustomFieldBlock
                   block={block}
@@ -818,7 +970,10 @@ export function TemplatePropertyRenderer({
               key={blockId}
               className="group/subfield rounded-lg border border-default-100 bg-content1 overflow-hidden"
             >
-              <summary className={nestedSummaryClass}>HTML block</summary>
+              <summary className={nestedSummaryClass}>
+                <span className="min-w-0 flex-1">HTML block</span>
+                {summaryChevron}
+              </summary>
               <div className="border-t border-default-100 bg-background px-3 py-3">
                 <HtmlBlock
                   block={block}
@@ -836,7 +991,10 @@ export function TemplatePropertyRenderer({
               key={blockId}
               className="group/subfield rounded-lg border border-default-100 bg-content1 overflow-hidden"
             >
-              <summary className={nestedSummaryClass}>{block.title}</summary>
+              <summary className={nestedSummaryClass}>
+                <span className="min-w-0 flex-1 truncate">{block.title}</span>
+                {summaryChevron}
+              </summary>
               <div className="border-t border-default-100 bg-background px-3 py-3">
                 <SectionBlock
                   block={block}
@@ -896,6 +1054,7 @@ export function TemplatePropertyRenderer({
             cardinality={property.cardinality}
             classId={property.class_id}
             createLink={property.create_link}
+            fillModeDefaultControls={fillModeDefaultControls}
             hideLabel={
               hideLeafLabelInAccordion ||
               (!!sectionTitleRenderedExternally && depth === 0)
@@ -915,37 +1074,30 @@ export function TemplatePropertyRenderer({
       ) : null}
       {fieldEditorUi}
       <div className="rounded-xl border border-default-100 bg-background overflow-hidden shadow-none">
-        {nestedSubtemplateWithOwnTitle ? (
-          <details open className="group/subsec">
-            <summary className="flex w-full cursor-pointer list-none items-center gap-2 border-b border-default-100 bg-default-50/90 px-4 py-3 text-left text-base font-semibold text-default-900 hover:bg-default-50 [&::-webkit-details-marker]:hidden">
-              {effectiveLabel}
-            </summary>
-            <div>
-              {effectiveDescription && (
-                <p className="border-b border-default-100 bg-default-50/30 px-4 py-3 text-sm text-default-600 leading-relaxed">
-                  {effectiveDescription}
-                </p>
-              )}
-              <div className="flex flex-col gap-2 p-3 sm:p-4">
-                {subFieldRows}
-              </div>
-            </div>
-          </details>
-        ) : (
-          <div>
-            {effectiveDescription && (
-              <p className="border-b border-default-100 bg-default-50/30 px-4 py-3 text-sm text-default-600 leading-relaxed">
-                {effectiveDescription}
-              </p>
-            )}
-            <div className="flex flex-col gap-2 p-3 sm:p-4">{subFieldRows}</div>
-          </div>
+        {effectiveDescription && (
+          <p className="border-b border-default-100 bg-default-50/30 px-4 py-3 text-sm text-default-600 leading-relaxed">
+            {effectiveDescription}
+          </p>
         )}
+        <div className="flex flex-col gap-2 p-3 sm:p-4">{subFieldRows}</div>
         {editMode && onAddNestedBlock && (
-          <Dropdown className="border-t border-default-100 p-3">
+          <Dropdown
+            className="border-t border-default-100 p-3"
+            isOpen={nestedAddMenuOpen}
+            onOpenChange={setNestedAddMenuOpen}
+          >
             <DropdownTrigger>
               <Button
                 className="w-full border border-dashed border-default-300"
+                endContent={
+                  <span
+                    className={`text-[10px] text-default-400 transition-transform duration-200 ${
+                      nestedAddMenuOpen ? "rotate-180" : ""
+                    }`}
+                  >
+                    ▼
+                  </span>
+                }
                 size="sm"
                 variant="flat"
               >

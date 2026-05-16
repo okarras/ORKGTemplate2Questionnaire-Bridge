@@ -11,21 +11,39 @@ export function getOrkgPropertyLink(predicateId: string): string | null {
   return null;
 }
 
-export function getOrkgClassLink(classId: string): string | null {
-  if (classId) {
-    return `https://orkg.org/class/${classId}`;
-  }
+/** Extract `C123` tail from a bare id or ORKG class IRI. */
+export function orkgClassIdTail(raw: string): string | null {
+  const t = raw?.trim();
 
-  return null;
+  if (!t) return null;
+  const fromPath = t.match(/\/(?:orkg\/)?class\/(C\d+)$/i);
+  const m = fromPath ?? t.match(/(C\d+)$/i);
+
+  if (!m) return null;
+  const id = m[1]!.toUpperCase();
+
+  return /^C\d+$/.test(id) ? id : null;
+}
+
+export function getOrkgClassLink(classId: string): string | null {
+  const tail = orkgClassIdTail(classId);
+
+  if (!tail) return null;
+
+  return `https://orkg.org/class/${tail}`;
 }
 
 /** Link to create a new ORKG resource of a given class */
 export function getOrkgCreateResourceLink(classId: string): string | null {
-  if (classId) {
-    return `https://orkg.org/resources/create?classes=${classId}`;
-  }
+  const tail =
+    orkgClassIdTail(classId) ??
+    (classId?.trim() && /^C\d+$/i.test(classId.trim())
+      ? classId.trim().toUpperCase().replace(/^c/, "C")
+      : null);
 
-  return null;
+  if (!tail) return null;
+
+  return `https://orkg.org/resources/create?classes=${tail}`;
 }
 
 export function getOrkgResourceLink(resourceId: string): string | null {

@@ -30,10 +30,13 @@ import {
   type QuestionnaireStructureDraft,
 } from "./questionnaire-draft-storage";
 import { getBlockSortId } from "./SortableBlockItem";
+import { mergeFillModeEmptyDefaults } from "./questionnaire-form-value-helpers";
 
 import {
+  getOrkgClassLink,
   getOrkgResourceLink,
   getOrkgResourceLinkFromIri,
+  orkgClassIdTail,
 } from "@/lib/orkg-links";
 import { normalizeOrkgResourceIri } from "@/lib/orkg-resource-ids";
 import { ResourceLabelCache } from "@/lib/resource-label-cache";
@@ -56,6 +59,60 @@ function hasSubProperties(prop: EnrichedSubtemplateProperty): boolean {
   const s = prop.subtemplate_properties;
 
   return Boolean(s && Object.keys(s).length > 0);
+}
+
+function OrkgSubtemplateMetaLinks({
+  prop,
+}: {
+  prop: EnrichedSubtemplateProperty;
+}): ReactNode {
+  const classTail = prop.class_id ? orkgClassIdTail(prop.class_id) : null;
+  const classHref = prop.class_id ? getOrkgClassLink(prop.class_id) : null;
+  const rawSubId = prop.subtemplate_id?.trim();
+  const normalizedSubId =
+    rawSubId && /^r\d+$/i.test(rawSubId) ? rawSubId.toUpperCase() : rawSubId;
+  const tmplHref =
+    normalizedSubId && /^R\d+$/.test(normalizedSubId)
+      ? getOrkgResourceLink(normalizedSubId)
+      : normalizedSubId
+        ? getOrkgResourceLinkFromIri(normalizeOrkgResourceIri(normalizedSubId))
+        : null;
+  const linkLabel =
+    prop.subtemplate_label?.trim() ||
+    prop.class_label?.trim() ||
+    (normalizedSubId ? shortPropertyId(normalizedSubId) : null) ||
+    (classTail ? `Class ${classTail}` : null);
+
+  if (!classHref && !tmplHref) return null;
+
+  return (
+    <span className="inline-flex flex-wrap items-center gap-2 shrink-0">
+      {tmplHref ? (
+        <a
+          className={clsx(
+            "text-sm font-medium underline underline-offset-2 hover:opacity-90",
+            ORKG_ACCENT,
+          )}
+          href={tmplHref}
+          rel="noreferrer"
+          target="_blank"
+        >
+          {linkLabel ?? "View on ORKG"}
+        </a>
+      ) : null}
+      {classTail && classHref ? (
+        <a
+          className="inline-flex items-center rounded-md border border-default-200 bg-default-100 px-1.5 py-0.5 font-mono text-[11px] text-default-700 hover:bg-default-200"
+          href={classHref}
+          rel="noreferrer"
+          target="_blank"
+          title="View class on ORKG"
+        >
+          {shortPropertyId(classTail)}
+        </a>
+      ) : null}
+    </span>
+  );
 }
 
 function shortPropertyId(id: string): string {
@@ -479,6 +536,7 @@ function OrkgPreviewPropertyNode({
                 .join(rootStr && summary ? " · " : "")}
             </span>
           )}
+          <OrkgSubtemplateMetaLinks prop={prop} />
           <span className="inline-flex items-center rounded-md border border-default-200 bg-default-100 px-1.5 py-0.5 font-mono text-[11px] text-default-600">
             {idChip}
           </span>
@@ -573,6 +631,7 @@ function OrkgPreviewPropertyNode({
       <Chip classNames={{ base: "h-6" }} size="sm" variant="flat">
         {typeChipLabel(inputType)}
       </Chip>
+      <OrkgSubtemplateMetaLinks prop={prop} />
       <span className="inline-flex items-center rounded-md border border-default-200 bg-default-100 px-1.5 py-0.5 font-mono text-[11px] text-default-600 ml-auto">
         {idChip}
       </span>
@@ -683,9 +742,19 @@ export function QuestionnaireOrkgPreview({
     [structure, mapping],
   );
 
+  const previewValues = useMemo(
+    () =>
+      mergeFillModeEmptyDefaults(
+        values,
+        mapping,
+        resolvedStructure.fieldOverrides,
+      ),
+    [values, mapping, resolvedStructure.fieldOverrides],
+  );
+
   const expandablePaths = useMemo(
-    () => collectExpandablePaths(mapping, values, resolvedStructure),
-    [mapping, values, resolvedStructure],
+    () => collectExpandablePaths(mapping, previewValues, resolvedStructure),
+    [mapping, previewValues, resolvedStructure],
   );
   const [expanded, setExpanded] = useState<Set<string>>(
     () => new Set(expandablePaths),
@@ -786,7 +855,7 @@ export function QuestionnaireOrkgPreview({
                     prop={p}
                     propId={block.id}
                     removedBuiltinProperties={removed}
-                    value={values[block.id] ?? ""}
+                    value={previewValues[block.id] ?? ""}
                     onToggle={onToggle}
                   />
                 </Fragment>

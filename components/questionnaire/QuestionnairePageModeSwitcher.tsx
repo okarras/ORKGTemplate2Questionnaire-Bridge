@@ -355,6 +355,7 @@ export function QuestionnairePageModeSwitcher({
       </div>
 
       <OrkgSubmitModal
+        fieldOverrides={previewStructure?.fieldOverrides ?? {}}
         isOpen={showSubmitModal}
         mapping={mapping}
         targetClassId={targetClassId}
