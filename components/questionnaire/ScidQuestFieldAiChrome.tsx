@@ -4,6 +4,7 @@ import type { InputType } from "@/types/template";
 import type { SelectOption } from "./questionnaire-form-types";
 import type { ReactNode } from "react";
 
+import { memo } from "react";
 import {
   ResearchQuestionnaireFieldAiWrapper,
   type ResearchFieldAiQuestionType,
@@ -193,7 +194,7 @@ function applySuggestionToFieldValue(
  * ORKG-specific adapter around {@link ResearchQuestionnaireFieldAiWrapper} from `@orkg/scidquest`.
  * Renders `children` (the field control) with ScidQuest AI when inside ScidQuest workspace context.
  */
-export function ScidQuestFieldAiChrome({
+export const ScidQuestFieldAiChrome = memo(function ScidQuestFieldAiChrome({
   children,
   propertyId,
   label,
@@ -238,7 +239,7 @@ export function ScidQuestFieldAiChrome({
         );
       }}
     >
-      {children}
+      <div className="min-w-0 w-full">{children}</div>
     </ResearchQuestionnaireFieldAiWrapper>
   );
-}
+});

@@ -47,7 +47,7 @@ import {
   buildInitialValues,
   coerceFormValuesToDeclaredTypes,
   inflateFromJson,
-  mergeFillModeEmptyDefaults,
+  mergeQuestionnaireFillDefaults,
 } from "./questionnaire-form-value-helpers";
 import { downloadQuestionnaireJsonExport } from "./questionnaire-export-json";
 import { exportQuestionnaireToPdf } from "./questionnaire-export-pdf";
@@ -189,8 +189,13 @@ export function QuestionnaireForm({
     () =>
       editMode
         ? values
-        : mergeFillModeEmptyDefaults(values, mapping, fieldOverrides),
-    [editMode, values, mapping, fieldOverrides],
+        : mergeQuestionnaireFillDefaults(
+            values,
+            mapping,
+            fieldOverrides,
+            customBlocks,
+          ),
+    [editMode, values, mapping, fieldOverrides, customBlocks],
   );
 
   const onDraftPersistRef = useRef(onDraftPersist);
@@ -591,10 +596,6 @@ export function QuestionnaireForm({
 
   const getInputTypeForPath = useCallback(
     (path: string, prop: SubtemplateProperty): InputType => {
-      console.log("getInputTypeForPath", path, prop);
-      if (prop.label === "hidden in text") {
-        console.log("@@@ getInputTypeForPath", path, prop, fieldOverrides);
-      }
       const o = fieldOverrides[path];
 
       if (o?.inputType) return o.inputType;
@@ -704,7 +705,12 @@ export function QuestionnaireForm({
         templateId,
         label,
         mapping,
-        values: mergeFillModeEmptyDefaults(values, mapping, fieldOverrides),
+        values: mergeQuestionnaireFillDefaults(
+          values,
+          mapping,
+          fieldOverrides,
+          customBlocks,
+        ),
         orderedBlocks,
         customBlocks,
         fieldOverrides,
@@ -731,41 +737,13 @@ export function QuestionnaireForm({
   ]);
 
   return (
-    <section className="questionnaire-form flex w-full max-w-none flex-col gap-10 py-10 p-10">
+    <section className="questionnaire-form mx-auto flex w-full max-w-4xl flex-col gap-6 px-4 py-8 sm:px-6 lg:px-8">
       <QuestionnaireFormHeader
         editMode={editMode}
         label={label}
         templateId={templateId}
         onEditModeChange={setEditMode}
       />
-
-      {editMode && removedBuiltinProperties.length > 0 && (
-        <div className="rounded-xl border border-warning-200 bg-warning-50/50 px-4 py-3 text-sm text-default-800">
-          <p className="mb-2 font-medium text-warning-900">
-            Removed template fields — restore to show them on the form again:
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {removedBuiltinProperties.map((path) => (
-              <div
-                key={path}
-                className="flex items-center gap-2 rounded-lg border border-warning-200/80 bg-background/80 px-2 py-1.5"
-              >
-                <span className="max-w-[14rem] truncate text-xs">
-                  {labelForPropertyPath(mapping, path)}
-                </span>
-                <Button
-                  color="warning"
-                  size="sm"
-                  variant="flat"
-                  onPress={() => restoreBuiltinProperty(path)}
-                >
-                  Restore
-                </Button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
       <QuestionnaireFormToolbar
         backHref={backHref}
@@ -786,9 +764,50 @@ export function QuestionnaireForm({
         onUndoAnswers={answerHistory?.onUndo}
       />
 
-      <div className="flex flex-col gap-8">
+      {editMode && removedBuiltinProperties.length > 0 && (
+        <details className="q-removed-panel">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-2 text-sm font-semibold text-warning-800 [&::-webkit-details-marker]:hidden">
+            <span>
+              {removedBuiltinProperties.length} removed field
+              {removedBuiltinProperties.length !== 1 ? "s" : ""} — click to
+              restore
+            </span>
+            <svg
+              aria-hidden
+              className="q-chevron"
+              fill="none"
+              stroke="currentColor"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              viewBox="0 0 24 24"
+            >
+              <path d="m6 9 6 6 6-6" />
+            </svg>
+          </summary>
+          <div className="mt-3 flex flex-wrap gap-2 q-collapsible-content">
+            {removedBuiltinProperties.map((path) => (
+              <Button
+                key={path}
+                className="h-auto gap-1.5 rounded-full px-3 py-1.5 text-xs"
+                color="warning"
+                size="sm"
+                variant="flat"
+                onPress={() => restoreBuiltinProperty(path)}
+              >
+                <span className="max-w-[12rem] truncate">
+                  {labelForPropertyPath(mapping, path)}
+                </span>
+                <span className="text-warning-600">↩</span>
+              </Button>
+            ))}
+          </div>
+        </details>
+      )}
+
+      <div className="flex flex-col gap-5">
         {editMode && (
-          <div className="flex justify-center rounded-xl border-2 border-dashed border-default-300 bg-default-50/50 py-6">
+          <div className="q-add-block-zone rounded-xl border-2 border-dashed border-default-200 bg-default-50/30 py-5">
             <AddBlockDropdown addBlock={addBlock} afterIndex={-1} />
           </div>
         )}
@@ -836,6 +855,7 @@ export function QuestionnaireForm({
 
       {showSubmitButton && (
         <OrkgSubmitModal
+          customBlocks={customBlocks}
           fieldOverrides={fieldOverrides}
           isOpen={showSubmitModal}
           mapping={mapping}

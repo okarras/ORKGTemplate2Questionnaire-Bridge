@@ -75,6 +75,8 @@ export interface CustomFieldBlockData {
   label: string;
   inputType: InputType;
   description?: string;
+  /** When set, fill mode treats this as the answer if the user left the field empty. */
+  emptyDefault?: string;
   selectOptions?: { value: string; label: string }[];
   scaleConfig?: {
     min: number;

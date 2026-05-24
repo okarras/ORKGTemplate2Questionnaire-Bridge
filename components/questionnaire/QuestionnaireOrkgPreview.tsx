@@ -30,7 +30,7 @@ import {
   type QuestionnaireStructureDraft,
 } from "./questionnaire-draft-storage";
 import { getBlockSortId } from "./SortableBlockItem";
-import { mergeFillModeEmptyDefaults } from "./questionnaire-form-value-helpers";
+import { mergeQuestionnaireFillDefaults } from "./questionnaire-form-value-helpers";
 
 import {
   getOrkgClassLink,
@@ -744,12 +744,13 @@ export function QuestionnaireOrkgPreview({
 
   const previewValues = useMemo(
     () =>
-      mergeFillModeEmptyDefaults(
+      mergeQuestionnaireFillDefaults(
         values,
         mapping,
         resolvedStructure.fieldOverrides,
+        resolvedStructure.customBlocks,
       ),
-    [values, mapping, resolvedStructure.fieldOverrides],
+    [values, mapping, resolvedStructure.fieldOverrides, resolvedStructure.customBlocks],
   );
 
   const expandablePaths = useMemo(

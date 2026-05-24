@@ -26,6 +26,27 @@ export function useSortableBlock(id: string) {
   return useSortable({ id });
 }
 
+/** Grip icon for drag handles */
+function GripIcon() {
+  return (
+    <svg
+      aria-hidden
+      fill="currentColor"
+      height="16"
+      viewBox="0 0 16 16"
+      width="16"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <circle cx="5.5" cy="3.5" r="1.25" />
+      <circle cx="5.5" cy="8" r="1.25" />
+      <circle cx="5.5" cy="12.5" r="1.25" />
+      <circle cx="10.5" cy="3.5" r="1.25" />
+      <circle cx="10.5" cy="8" r="1.25" />
+      <circle cx="10.5" cy="12.5" r="1.25" />
+    </svg>
+  );
+}
+
 /** Wrapper that makes its child sortable with a drag handle */
 export function SortableBlockWrapper({
   id,
@@ -54,8 +75,13 @@ export function SortableBlockWrapper({
   return (
     <div
       ref={setNodeRef}
-      className={isDragging ? "z-50 opacity-80" : ""}
-      style={style}
+      className={isDragging ? "z-50 opacity-80 scale-[1.01]" : ""}
+      style={{
+        ...style,
+        ...(isDragging
+          ? { boxShadow: "0 8px 32px rgba(0,0,0,0.12)" }
+          : {}),
+      }}
     >
       <div className="flex items-start gap-2">
         <div
@@ -64,27 +90,12 @@ export function SortableBlockWrapper({
           aria-hidden={disabled}
           className={
             disabled
-              ? "mt-0.5 shrink-0 touch-none rounded-lg p-2 opacity-0 pointer-events-none"
-              : "mt-0.5 cursor-grab active:cursor-grabbing touch-none rounded-lg p-2 text-default-500 transition-colors hover:bg-default-200 hover:text-default-700"
+              ? "mt-2 shrink-0 touch-none rounded-lg p-1.5 opacity-0 pointer-events-none"
+              : "q-drag-handle mt-2"
           }
           title={disabled ? undefined : "Drag to reorder"}
         >
-          <svg
-            fill="none"
-            height="16"
-            stroke="currentColor"
-            strokeWidth="2"
-            viewBox="0 0 24 24"
-            width="16"
-            xmlns="http://www.w3.org/2000/svg"
-          >
-            <circle cx="9" cy="5" r="1" />
-            <circle cx="9" cy="12" r="1" />
-            <circle cx="9" cy="19" r="1" />
-            <circle cx="15" cy="5" r="1" />
-            <circle cx="15" cy="12" r="1" />
-            <circle cx="15" cy="19" r="1" />
-          </svg>
+          <GripIcon />
         </div>
         <div className="min-w-0 flex-1">{children}</div>
       </div>

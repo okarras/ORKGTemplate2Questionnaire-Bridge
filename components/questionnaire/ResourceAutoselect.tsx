@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Autocomplete, AutocompleteItem } from "@heroui/autocomplete";
 import { Spinner } from "@heroui/spinner";
 import { Link } from "@heroui/link";
@@ -40,6 +40,16 @@ function formatOrkgOptionDescription(r: OrkgResourceOption): string {
   return entity;
 }
 
+const resourceInputWrapperClass =
+  "min-w-0 w-full rounded-lg border border-default-300 bg-content1 shadow-sm data-[hover=true]:border-default-400 data-[focus=true]:border-primary data-[focus=true]:ring-2 data-[focus=true]:ring-primary/20 transition-[border-color,box-shadow]";
+const resourceAutocompleteClassNames = {
+  base: "w-full min-w-0",
+  mainWrapper: "w-full min-w-0",
+  inputWrapper: resourceInputWrapperClass,
+  innerWrapper: "w-full min-w-0",
+  input: "min-w-0 w-full truncate",
+};
+
 interface ResourceAutoselectProps {
   propertyId: string;
   label: string;
@@ -63,6 +73,8 @@ interface ResourceAutoselectProps {
   ) => void;
   /** Scope for snapshot callbacks (e.g. full template property path). Defaults to `propertyId`. */
   optionsScopeKey?: string;
+  /** Rendered on the same row as the autocomplete (e.g. field customize button). */
+  trailingAction?: ReactNode;
 }
 
 export function ResourceAutoselect({
@@ -77,7 +89,25 @@ export function ResourceAutoselect({
   hideLabel = false,
   onResourceOptionsSnapshot,
   optionsScopeKey,
+  trailingAction,
 }: ResourceAutoselectProps) {
+  const createResourceHref =
+    classId
+      ? getOrkgCreateResourceLink(classId) || "https://orkg.org/add-resource"
+      : "https://orkg.org/add-resource";
+
+  const createLink = (
+    <Link
+      isExternal
+      aria-label="Create new resource in ORKG"
+      className="text-primary w-fit"
+      href={createResourceHref}
+      size="sm"
+    >
+      Create new in ORKG
+    </Link>
+  );
+
   const [resources, setResources] = useState<OrkgResourceOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [inputValue, setInputValue] = useState("");
@@ -418,8 +448,15 @@ export function ResourceAutoselect({
   const id = `field-${propertyId}`;
 
   if (loading) {
+    const loadingBox = (
+      <div className="flex min-w-0 items-center gap-3 rounded-lg border border-default-200 bg-default-50/50 px-4 py-3">
+        <Spinner color="default" size="sm" />
+        <span className="text-sm text-default-500">Loading ORKG options...</span>
+      </div>
+    );
+
     return (
-      <div className="flex flex-col gap-1.5">
+      <div className="flex min-w-0 w-full flex-col gap-1.5">
         {!hideLabel ? (
           <div className="space-y-2">
             <FieldLabel
@@ -427,41 +464,146 @@ export function ResourceAutoselect({
               label={label}
               propertyId={propertyId}
             />
-            <div className="flex items-center gap-3 rounded-lg border border-default-200 bg-default-50/50 px-4 py-3">
-              <Spinner color="default" size="sm" />
-              <span className="text-sm text-default-500">
-                Loading ORKG options...
-              </span>
-            </div>
+            {trailingAction ? (
+              <div className="q-resource-input-row flex w-full min-w-0 items-center gap-2">
+                <div className="min-w-0 flex-1">{loadingBox}</div>
+                <div className="q-field-edit-action shrink-0">{trailingAction}</div>
+              </div>
+            ) : (
+              loadingBox
+            )}
+          </div>
+        ) : trailingAction ? (
+          <div className="q-resource-input-row flex w-full min-w-0 items-center gap-2">
+            <div className="min-w-0 flex-1">{loadingBox}</div>
+            <div className="q-field-edit-action shrink-0">{trailingAction}</div>
           </div>
         ) : (
-          <div className="flex items-center gap-3 rounded-lg border border-default-200 bg-default-50/50 px-4 py-3">
-            <Spinner color="default" size="sm" />
-            <span className="text-sm text-default-500">
-              Loading ORKG options...
-            </span>
-          </div>
+          loadingBox
         )}
-        <Link
-          isExternal
-          aria-label="Create new resource in ORKG"
-          className="text-primary w-fit"
-          href={
-            classId
-              ? getOrkgCreateResourceLink(classId) ||
-                "https://orkg.org/add-resource"
-              : "https://orkg.org/add-resource"
-          }
-          size="sm"
-        >
-          Create new in ORKG
-        </Link>
+        {createLink}
       </div>
     );
   }
 
+  const autocomplete = (
+    <Autocomplete
+      aria-label={label}
+      className="w-full min-w-0"
+      classNames={resourceAutocompleteClassNames}
+      id={id}
+      inputValue={inputValue}
+      isDisabled={false}
+      placeholder={
+        placeholder ??
+        (multiselect
+          ? "Type to search ORKG, then pick resources…"
+          : "Search and select...")
+      }
+      selectedKey={
+        multiselect
+          ? null
+          : (() => {
+              const current = selectedKeys[0];
+
+              if (!current) return undefined;
+
+              if (
+                mergedResources.some((r) =>
+                  resourceIrisEquivalent(r.id, current),
+                )
+              )
+                return normalizeOrkgResourceIri(current);
+              const match = mergedResources.find(
+                (r) =>
+                  resourceIrisEquivalent(r.id, current) || r.label === current,
+              );
+
+              return match ? match.id : normalizeOrkgResourceIri(current);
+            })()
+      }
+      variant="bordered"
+      onInputChange={(val) => {
+        setInputValue(val);
+      }}
+      onSelectionChange={(key) => {
+        if (!key) {
+          if (!multiselect) onChange("");
+
+          return;
+        }
+
+        const selected = String(key);
+        const canonical =
+          mergedResources.find((r) => resourceIrisEquivalent(r.id, selected))
+            ?.id ?? normalizeOrkgResourceIri(selected);
+
+        if (multiselect) {
+          if (
+            !selectedKeys.some((k) => resourceIrisEquivalent(k, canonical))
+          ) {
+            onChange(dedupeOrkgResourceIris([...selectedKeys, canonical]));
+          }
+          setInputValue("");
+        } else {
+          onChange(canonical);
+          setInputValue(
+            mergedResources.find((r) => r.id === canonical)?.label ||
+              resolvedLabels[canonical] ||
+              orkgResourceIriTail(canonical),
+          );
+        }
+      }}
+    >
+      {mergedResources.map((r) => {
+        const orkgUrl = getOrkgResourceLinkFromIri(r.id);
+        const displayLabel = r.label || r.id.split("/").pop() || r.id;
+        const description = formatOrkgOptionDescription(r);
+
+        return (
+          <AutocompleteItem
+            key={r.id}
+            description={description}
+            endContent={
+              orkgUrl ? (
+                <Link
+                  isExternal
+                  aria-label={`View ${displayLabel} on ORKG`}
+                  className="min-w-0 p-1 text-default-400 hover:text-primary"
+                  href={orkgUrl}
+                  size="sm"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <svg
+                    aria-hidden
+                    fill="none"
+                    height="14"
+                    stroke="currentColor"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    viewBox="0 0 24 24"
+                    width="14"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                    <polyline points="15 3 21 3 21 9" />
+                    <line x1="10" x2="21" y1="14" y2="3" />
+                  </svg>
+                </Link>
+              ) : undefined
+            }
+            textValue={`${displayLabel} ${description}`}
+          >
+            {displayLabel}
+          </AutocompleteItem>
+        );
+      })}
+    </Autocomplete>
+  );
+
   return (
-    <div className="flex flex-col gap-1.5">
+    <div className="flex min-w-0 w-full flex-col gap-1.5">
       {!hideLabel ? (
         <FieldLabel classId={classId} label={label} propertyId={propertyId} />
       ) : (
@@ -503,133 +645,15 @@ export function ResourceAutoselect({
         </div>
       )}
 
-      <Autocomplete
-        aria-label={label}
-        className="w-full"
-        id={id}
-        inputValue={inputValue}
-        isDisabled={false}
-        placeholder={
-          placeholder ??
-          (multiselect
-            ? "Type to search ORKG, then pick resources…"
-            : "Search and select...")
-        }
-        selectedKey={
-          multiselect
-            ? null
-            : (() => {
-                const current = selectedKeys[0];
-
-                if (!current) return undefined;
-
-                if (
-                  mergedResources.some((r) =>
-                    resourceIrisEquivalent(r.id, current),
-                  )
-                )
-                  return normalizeOrkgResourceIri(current);
-                const match = mergedResources.find(
-                  (r) =>
-                    resourceIrisEquivalent(r.id, current) ||
-                    r.label === current,
-                );
-
-                return match ? match.id : normalizeOrkgResourceIri(current);
-              })()
-        }
-        variant="bordered"
-        onInputChange={(val) => {
-          setInputValue(val);
-        }}
-        onSelectionChange={(key) => {
-          if (!key) {
-            if (!multiselect) onChange("");
-
-            return;
-          }
-
-          const selected = String(key);
-          const canonical =
-            mergedResources.find((r) => resourceIrisEquivalent(r.id, selected))
-              ?.id ?? normalizeOrkgResourceIri(selected);
-
-          if (multiselect) {
-            if (
-              !selectedKeys.some((k) => resourceIrisEquivalent(k, canonical))
-            ) {
-              onChange(dedupeOrkgResourceIris([...selectedKeys, canonical]));
-            }
-            setInputValue("");
-          } else {
-            onChange(canonical);
-            setInputValue(
-              mergedResources.find((r) => r.id === canonical)?.label ||
-                resolvedLabels[canonical] ||
-                orkgResourceIriTail(canonical),
-            );
-          }
-        }}
-      >
-        {mergedResources.map((r) => {
-          const orkgUrl = getOrkgResourceLinkFromIri(r.id);
-          const displayLabel = r.label || r.id.split("/").pop() || r.id;
-          const description = formatOrkgOptionDescription(r);
-
-          return (
-            <AutocompleteItem
-              key={r.id}
-              description={description}
-              endContent={
-                orkgUrl ? (
-                  <Link
-                    isExternal
-                    aria-label={`View ${displayLabel} on ORKG`}
-                    className="min-w-0 p-1 text-default-400 hover:text-primary"
-                    href={orkgUrl}
-                    size="sm"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <svg
-                      aria-hidden
-                      fill="none"
-                      height="14"
-                      stroke="currentColor"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth="2"
-                      viewBox="0 0 24 24"
-                      width="14"
-                      xmlns="http://www.w3.org/2000/svg"
-                    >
-                      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-                      <polyline points="15 3 21 3 21 9" />
-                      <line x1="10" x2="21" y1="14" y2="3" />
-                    </svg>
-                  </Link>
-                ) : undefined
-              }
-              textValue={`${displayLabel} ${description}`}
-            >
-              {displayLabel}
-            </AutocompleteItem>
-          );
-        })}
-      </Autocomplete>
-      <Link
-        isExternal
-        aria-label="Create new resource in ORKG"
-        className="text-primary w-fit"
-        href={
-          classId
-            ? getOrkgCreateResourceLink(classId) ||
-              "https://orkg.org/add-resource"
-            : "https://orkg.org/add-resource"
-        }
-        size="sm"
-      >
-        Create new in ORKG
-      </Link>
+      {trailingAction ? (
+        <div className="q-resource-input-row flex w-full min-w-0 items-center gap-2">
+          <div className="min-w-0 flex-1">{autocomplete}</div>
+          <div className="q-field-edit-action shrink-0">{trailingAction}</div>
+        </div>
+      ) : (
+        autocomplete
+      )}
+      {createLink}
     </div>
   );
 }

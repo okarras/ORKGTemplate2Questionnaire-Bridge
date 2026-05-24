@@ -31,6 +31,14 @@ export type FieldOverrides = Record<
      * Stored as a string (single value); one-to-many uses comma-separated values or IRIs.
      */
     emptyDefault?: string;
+    /**
+     * When true, this field is shown in the main class header / prominent badge area instead of just inline.
+     */
+    showInHeader?: boolean;
+    /**
+     * When true, prevents expanding a subtemplate and treats the field simply as a resource selector.
+     */
+    treatAsResource?: boolean;
   }
 >;
 

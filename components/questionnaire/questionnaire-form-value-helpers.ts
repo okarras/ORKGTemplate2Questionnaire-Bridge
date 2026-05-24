@@ -1,10 +1,16 @@
 import type {
+  CustomBlock,
   EnrichedSubtemplateProperty,
   EnrichedTemplateMapping,
   SubtemplateProperty,
 } from "@/types/template";
+import type { InputType } from "@/types/template";
 import type { FieldOverrides, FormValue } from "./questionnaire-form-types";
 
+import { dedupeOrkgResourceIris } from "@/lib/orkg-resource-ids";
+
+import { CUSTOM_PREFIX } from "./questionnaire-form-constants";
+import { parseStoredMultiDefault } from "./field-default-value-utils";
 import { getInputTypeFromValueType } from "./input-type-utils";
 
 type PropertyValue = string | number | boolean | string[];
@@ -101,6 +107,8 @@ function createEmptyValue(prop: EnrichedSubtemplateProperty): FormValue {
 
   if (leaf === "checkbox") return false;
 
+  if (prop.cardinality?.toLowerCase() === "one to many") return [];
+
   return "";
 }
 
@@ -138,12 +146,16 @@ function applyEmptyDefaultToLeaf(
     prop.literalDatatype,
   );
 
-  if (many && Array.isArray(v)) {
-    if (v.length > 0) return v;
-    const parts = trimmed
-      .split(/[,|]/)
-      .map((s) => s.trim())
-      .filter(Boolean);
+  if (many) {
+    const empty = Array.isArray(v) ? v.length === 0 : isScalarFormEmpty(v);
+
+    if (!empty) {
+      if (Array.isArray(v)) return v;
+
+      return v;
+    }
+
+    const parts = parseStoredMultiDefault(trimmed);
 
     if (parts.length === 0) return v;
 
@@ -155,10 +167,12 @@ function applyEmptyDefaultToLeaf(
       }) as FormValue;
     }
 
+    if (leaf === "resource" || prop.valueType === "IRI") {
+      return dedupeOrkgResourceIris(parts) as FormValue;
+    }
+
     return parts as FormValue;
   }
-
-  if (many) return v;
 
   if (!isScalarFormEmpty(v)) return v;
 
@@ -241,6 +255,78 @@ export function mergeFillModeEmptyDefaults(
   }
 
   return out;
+}
+
+function applyEmptyDefaultToCustomField(
+  v: FormValue,
+  inputType: InputType,
+  def: string,
+): FormValue {
+  const trimmed = def.trim();
+
+  if (!trimmed) return v;
+  if (!isScalarFormEmpty(v)) return v;
+
+  if (inputType === "checkbox") {
+    const t = trimmed.toLowerCase();
+
+    return t === "true" || t === "1" || t === "yes";
+  }
+
+  if (inputType === "number") {
+    const n = Number(trimmed);
+
+    return Number.isFinite(n) ? n : trimmed;
+  }
+
+  if (inputType === "select") {
+    return trimmed;
+  }
+
+  return trimmed;
+}
+
+/** Apply `emptyDefault` on custom field blocks (`__custom_*` keys). */
+export function mergeCustomFieldEmptyDefaults(
+  values: Record<string, FormValue>,
+  customBlocks: Record<string, CustomBlock>,
+): Record<string, FormValue> {
+  let changed = false;
+  const out: Record<string, FormValue> = { ...values };
+
+  for (const block of Object.values(customBlocks)) {
+    if (block.type !== "customField") continue;
+    const def = block.emptyDefault?.trim();
+
+    if (!def) continue;
+
+    const key = `${CUSTOM_PREFIX}${block.id}`;
+    const cur = out[key];
+
+    if (cur === undefined) continue;
+
+    const next = applyEmptyDefaultToCustomField(cur, block.inputType, def);
+
+    if (next !== cur) {
+      out[key] = next;
+      changed = true;
+    }
+  }
+
+  return changed ? out : values;
+}
+
+/** Merge template property and custom field empty defaults (fill mode / export / submit). */
+export function mergeQuestionnaireFillDefaults(
+  values: Record<string, FormValue>,
+  mapping: EnrichedTemplateMapping,
+  fieldOverrides: FieldOverrides,
+  customBlocks: Record<string, CustomBlock> = {},
+): Record<string, FormValue> {
+  return mergeCustomFieldEmptyDefaults(
+    mergeFillModeEmptyDefaults(values, mapping, fieldOverrides),
+    customBlocks,
+  );
 }
 
 export function flattenForJson(

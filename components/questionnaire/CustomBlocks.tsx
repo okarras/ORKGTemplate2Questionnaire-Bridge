@@ -41,22 +41,24 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 
+import { CustomFieldEditDialog } from "./CustomFieldEditDialog";
 import { DynamicFieldInput } from "./DynamicFieldInput";
+import { FieldEditButton } from "./FieldEditButton";
 
 type FieldValue = string | number | boolean | string[];
 
 function SortableSectionChild({
   id,
   child,
-  block,
+  block: _block,
   editMode,
-  getChildBlocks,
-  getChildValue,
-  onAddChild,
-  onChildValueChange,
-  onRemoveChild,
-  onReorderChildren,
-  onUpdateChild,
+  getChildBlocks: _getChildBlocks,
+  getChildValue: _getChildValue,
+  onAddChild: _onAddChild,
+  onChildValueChange: _onChildValueChange,
+  onRemoveChild: _onRemoveChild,
+  onReorderChildren: _onReorderChildren,
+  onUpdateChild: _onUpdateChild,
   renderChild,
 }: {
   id: string;
@@ -100,26 +102,21 @@ function SortableSectionChild({
     >
       <div className="flex items-start gap-2">
         {editMode && (
-          <div
-            {...attributes}
-            {...listeners}
-            className="mt-1 cursor-grab active:cursor-grabbing touch-none rounded p-1 text-default-400 hover:bg-default-100 hover:text-default-600"
-          >
+          <div {...attributes} {...listeners} className="q-drag-handle mt-1">
             <svg
-              fill="none"
+              aria-hidden
+              fill="currentColor"
               height="14"
-              stroke="currentColor"
-              strokeWidth="2"
-              viewBox="0 0 24 24"
+              viewBox="0 0 16 16"
               width="14"
               xmlns="http://www.w3.org/2000/svg"
             >
-              <circle cx="9" cy="5" r="1" />
-              <circle cx="9" cy="12" r="1" />
-              <circle cx="9" cy="19" r="1" />
-              <circle cx="15" cy="5" r="1" />
-              <circle cx="15" cy="12" r="1" />
-              <circle cx="15" cy="19" r="1" />
+              <circle cx="5.5" cy="3.5" r="1.25" />
+              <circle cx="5.5" cy="8" r="1.25" />
+              <circle cx="5.5" cy="12.5" r="1.25" />
+              <circle cx="10.5" cy="3.5" r="1.25" />
+              <circle cx="10.5" cy="8" r="1.25" />
+              <circle cx="10.5" cy="12.5" r="1.25" />
             </svg>
           </div>
         )}
@@ -138,6 +135,67 @@ const INPUT_TYPE_OPTIONS: { value: InputType; label: string }[] = [
   { value: "checkbox", label: "Checkbox" },
   { value: "date", label: "Date" },
 ];
+
+/** Inline action bar for blocks — appears on hover */
+function BlockActionBar({
+  editMode,
+  onEdit,
+  onRemove,
+}: {
+  editMode: boolean;
+  onEdit?: () => void;
+  onRemove: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+      {editMode && onEdit && (
+        <Button
+          isIconOnly
+          size="sm"
+          title="Edit"
+          variant="light"
+          onPress={onEdit}
+        >
+          <svg
+            aria-hidden
+            fill="none"
+            height="14"
+            stroke="currentColor"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            viewBox="0 0 24 24"
+            width="14"
+          >
+            <path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+          </svg>
+        </Button>
+      )}
+      <Button
+        isIconOnly
+        color="danger"
+        size="sm"
+        title="Remove"
+        variant="light"
+        onPress={onRemove}
+      >
+        <svg
+          aria-hidden
+          fill="none"
+          height="14"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          viewBox="0 0 24 24"
+          width="14"
+        >
+          <path d="M18 6 6 18M6 6l12 12" />
+        </svg>
+      </Button>
+    </div>
+  );
+}
 
 // ── Text block ────────────────────────────────────────────────────
 interface TextBlockProps {
@@ -168,13 +226,13 @@ export function TextBlock({
 
   if (editMode && isEditing) {
     return (
-      <Card className="w-full border-dashed border-2 border-default-300 bg-default-50/50">
+      <Card className="w-full border-2 border-dashed border-default-300 bg-default-50/50 shadow-none">
         <CardBody className="gap-3">
           <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-default-600">
+            <span className="text-sm font-semibold text-default-700">
               Edit text block
             </span>
-            <div className="flex gap-1">
+            <div className="flex gap-1.5">
               <Button
                 color="primary"
                 size="sm"
@@ -226,35 +284,33 @@ export function TextBlock({
 
   return (
     <div className="group relative w-full">
-      <div className="rounded-xl border border-default-200 bg-default-50/60 px-5 py-4 shadow-sm transition-shadow hover:shadow-md">
-        {block.heading && (
-          <h3 className="mb-2 text-base font-semibold text-default-800">
-            {block.heading}
-          </h3>
-        )}
-        <p className="whitespace-pre-wrap text-sm leading-relaxed text-default-700">
-          {block.body || (
-            <span className="italic text-default-400">No content yet</span>
-          )}
-        </p>
-      </div>
-      <div className="absolute -right-1 -top-1 z-10 flex gap-1 rounded-lg bg-background/95 p-1 shadow-md opacity-0 transition-opacity group-hover:opacity-100">
-        {editMode && (
-          <Button
-            size="sm"
-            variant="flat"
-            onPress={() => {
+      <div
+        className="rounded-xl border border-default-200 bg-default-50/60 px-5 py-4 transition-all hover:shadow-sm"
+        style={{ borderLeft: "3px solid var(--q-accent-text)" }}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            {block.heading && (
+              <h3 className="mb-2 text-base font-semibold text-default-800">
+                {block.heading}
+              </h3>
+            )}
+            <p className="whitespace-pre-wrap text-sm leading-relaxed text-default-600">
+              {block.body || (
+                <span className="italic text-default-400">No content yet</span>
+              )}
+            </p>
+          </div>
+          <BlockActionBar
+            editMode={editMode}
+            onEdit={() => {
               setEditHeading(block.heading ?? "");
               setEditBody(block.body ?? "");
               setIsEditing(true);
             }}
-          >
-            Edit
-          </Button>
-        )}
-        <Button color="danger" size="sm" variant="flat" onPress={onRemove}>
-          Remove
-        </Button>
+            onRemove={onRemove}
+          />
+        </div>
       </div>
     </div>
   );
@@ -316,13 +372,13 @@ export function SectionBlock({
 
   if (editMode && isEditing) {
     return (
-      <Card className="w-full border-dashed border-2 border-default-300 bg-default-50/50">
+      <Card className="w-full border-2 border-dashed border-default-300 bg-default-50/50 shadow-none">
         <CardBody className="gap-3">
           <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-default-600">
+            <span className="text-sm font-semibold text-default-700">
               Edit section header
             </span>
-            <div className="flex gap-1">
+            <div className="flex gap-1.5">
               <Button
                 color="primary"
                 size="sm"
@@ -365,10 +421,20 @@ export function SectionBlock({
 
   return (
     <div className="group relative w-full">
-      <div className="rounded-xl border border-primary/20 bg-primary/5 px-5 py-4">
-        <h3 className="text-base font-semibold text-primary">
-          {block.title || "Untitled section"}
-        </h3>
+      <div className="q-section-header">
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="text-base font-semibold text-default-800">
+            {block.title || "Untitled section"}
+          </h3>
+          <BlockActionBar
+            editMode={editMode}
+            onEdit={() => {
+              setEditTitle(block.title ?? "");
+              setIsEditing(true);
+            }}
+            onRemove={onRemove}
+          />
+        </div>
       </div>
       {(() => {
         const children = getChildBlocks
@@ -487,67 +553,52 @@ export function SectionBlock({
           );
 
         return (
-          <div className="mt-4 space-y-4 rounded-lg border border-primary/15 bg-background/50 px-5 py-4">
+          <div className="mt-3 space-y-3 rounded-lg border border-default-100 bg-background/50 p-4">
             {listContent}
           </div>
         );
       })()}
       {editMode && onAddChild && (
-        <Dropdown>
-          <DropdownTrigger>
-            <Button
-              className="mt-3 border-2 border-dashed border-default-300 font-medium text-default-600 hover:border-primary hover:bg-primary/5 hover:text-primary"
-              size="sm"
-              variant="flat"
-            >
-              + Add field to section
-            </Button>
-          </DropdownTrigger>
-          <DropdownMenu aria-label="Add to section">
-            <DropdownItem
-              key="text"
-              onPress={() => onAddChild(block.id, "text")}
-            >
-              Text
-            </DropdownItem>
-            <DropdownItem
-              key="section"
-              onPress={() => onAddChild(block.id, "section")}
-            >
-              Subsection
-            </DropdownItem>
-            <DropdownItem
-              key="field"
-              onPress={() => onAddChild(block.id, "customField")}
-            >
-              Field
-            </DropdownItem>
-            <DropdownItem
-              key="html"
-              onPress={() => onAddChild(block.id, "html")}
-            >
-              HTML
-            </DropdownItem>
-          </DropdownMenu>
-        </Dropdown>
+        <div className="mt-3">
+          <Dropdown>
+            <DropdownTrigger>
+              <Button
+                className="border-2 border-dashed border-default-300 font-medium text-default-500 hover:border-primary hover:bg-primary/5 hover:text-primary transition-all"
+                size="sm"
+                variant="flat"
+              >
+                + Add to section
+              </Button>
+            </DropdownTrigger>
+            <DropdownMenu aria-label="Add to section">
+              <DropdownItem
+                key="text"
+                onPress={() => onAddChild(block.id, "text")}
+              >
+                Text
+              </DropdownItem>
+              <DropdownItem
+                key="section"
+                onPress={() => onAddChild(block.id, "section")}
+              >
+                Subsection
+              </DropdownItem>
+              <DropdownItem
+                key="field"
+                onPress={() => onAddChild(block.id, "customField")}
+              >
+                Field
+              </DropdownItem>
+              <DropdownItem
+                key="html"
+                onPress={() => onAddChild(block.id, "html")}
+              >
+                HTML
+              </DropdownItem>
+            </DropdownMenu>
+          </Dropdown>
+        </div>
       )}
-      <div className="absolute -right-1 -top-1 z-10 flex gap-1 rounded-lg bg-background/95 p-1 shadow-md opacity-0 transition-opacity group-hover:opacity-100">
-        {editMode && (
-          <Button
-            size="sm"
-            variant="flat"
-            onPress={() => {
-              setEditTitle(block.title ?? "");
-              setIsEditing(true);
-            }}
-          >
-            Edit
-          </Button>
-        )}
-        <Button color="danger" size="sm" variant="flat" onPress={onRemove}>
-          Remove
-        </Button>
-      </div>
     </div>
   );
 }
@@ -612,13 +663,13 @@ export function HtmlBlock({
 
   if (editMode && isEditing) {
     return (
-      <Card className="w-full border-dashed border-2 border-default-300 bg-default-50/50">
+      <Card className="w-full border-2 border-dashed border-default-300 bg-default-50/50 shadow-none">
         <CardBody className="gap-3">
           <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-default-600">
+            <span className="text-sm font-semibold text-default-700">
               Edit HTML block
             </span>
-            <div className="flex gap-1">
+            <div className="flex gap-1.5">
               <Button
                 color="primary"
                 size="sm"
@@ -658,7 +709,7 @@ export function HtmlBlock({
             value={editHtml}
             onValueChange={setEditHtml}
           />
-          <p className="text-xs text-default-500">
+          <p className="text-xs text-default-400">
             Supports: headings, links, lists, bold, italic, images, tables.
             Scripts and unsafe tags are stripped for security.
           </p>
@@ -670,25 +721,23 @@ export function HtmlBlock({
   return (
     <div className="group relative w-full">
       <div
-        dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
-        className="[&_a]:text-primary [&_a]:underline [&_h1]:text-lg [&_h2]:text-base [&_h3]:text-sm [&_ul]:list-disc [&_ol]:list-decimal [&_li]:ml-4 rounded-xl border border-default-200 bg-default-50/60 px-5 py-4 text-sm leading-relaxed text-default-700 shadow-sm [&_p]:mb-2 [&_p:last-child]:mb-0"
-      />
-      <div className="absolute -right-1 -top-1 z-10 flex gap-1 rounded-lg bg-background/95 p-1 shadow-md opacity-0 transition-opacity group-hover:opacity-100">
-        {editMode && (
-          <Button
-            size="sm"
-            variant="flat"
-            onPress={() => {
+        className="rounded-xl border border-default-200 bg-default-50/60 px-5 py-4 transition-all hover:shadow-sm"
+        style={{ borderLeft: "3px solid var(--q-accent-html)" }}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div
+            dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
+            className="min-w-0 flex-1 [&_a]:text-primary [&_a]:underline [&_h1]:text-lg [&_h2]:text-base [&_h3]:text-sm [&_ul]:list-disc [&_ol]:list-decimal [&_li]:ml-4 text-sm leading-relaxed text-default-700 [&_p]:mb-2 [&_p:last-child]:mb-0"
+          />
+          <BlockActionBar
+            editMode={editMode}
+            onEdit={() => {
               setEditHtml(block.html ?? "");
               setIsEditing(true);
             }}
-          >
-            Edit
-          </Button>
-        )}
-        <Button color="danger" size="sm" variant="flat" onPress={onRemove}>
-          Remove
-        </Button>
+            onRemove={onRemove}
+          />
+        </div>
       </div>
     </div>
   );
@@ -712,248 +761,47 @@ export function CustomFieldBlock({
   onRemove,
   editMode,
 }: CustomFieldBlockProps) {
-  const [isEditing, setIsEditing] = useState(false);
-  const [editLabel, setEditLabel] = useState(block.label ?? "");
-  const [editDescription, setEditDescription] = useState(
-    block.description ?? "",
-  );
-  const [editInputType, setEditInputType] = useState<InputType>(
-    block.inputType,
-  );
-  const [editSelectOptions, setEditSelectOptions] = useState<SelectOption[]>(
-    block.selectOptions ?? [
-      { value: "opt1", label: "Option 1" },
-      { value: "other", label: "Other" },
-    ],
-  );
-  const [editScaleConfig, setEditScaleConfig] = useState<ScaleConfig>(
-    block.scaleConfig ?? { min: 1, max: 5 },
-  );
-
-  const handleSave = useCallback(() => {
-    onUpdate({
-      ...block,
-      label: editLabel.trim() || block.label,
-      description: editDescription.trim() || undefined,
-      inputType: editInputType,
-      selectOptions:
-        editInputType === "select" && editSelectOptions.length > 0
-          ? editSelectOptions
-          : undefined,
-      scaleConfig: editInputType === "scale" ? editScaleConfig : undefined,
-    });
-    setIsEditing(false);
-  }, [
-    block,
-    editLabel,
-    editDescription,
-    editInputType,
-    editSelectOptions,
-    editScaleConfig,
-    onUpdate,
-  ]);
-
-  if (editMode && isEditing) {
-    return (
-      <Card className="w-full border-dashed border-2 border-default-300 bg-default-50/50">
-        <CardBody className="gap-3">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-default-600">
-              Edit custom field
-            </span>
-            <div className="flex gap-1">
-              <Button
-                color="primary"
-                size="sm"
-                variant="flat"
-                onPress={handleSave}
-              >
-                Save
-              </Button>
-              <Button
-                size="sm"
-                variant="flat"
-                onPress={() => setIsEditing(false)}
-              >
-                Cancel
-              </Button>
-              <Button
-                color="danger"
-                size="sm"
-                variant="flat"
-                onPress={onRemove}
-              >
-                Remove
-              </Button>
-            </div>
-          </div>
-          <Input
-            label="Label"
-            placeholder="Field label"
-            size="sm"
-            value={editLabel}
-            onValueChange={setEditLabel}
-          />
-          <Textarea
-            label="Description (optional)"
-            minRows={2}
-            placeholder="Help text"
-            size="sm"
-            value={editDescription}
-            onValueChange={setEditDescription}
-          />
-          <Select
-            label="Field type"
-            selectedKeys={new Set([editInputType])}
-            size="sm"
-            onSelectionChange={(keys) => {
-              const k = (keys as Set<string>).values().next().value;
-
-              if (k) setEditInputType(k as InputType);
-            }}
-          >
-            {INPUT_TYPE_OPTIONS.map((opt) => (
-              <SelectItem key={opt.value}>{opt.label}</SelectItem>
-            ))}
-          </Select>
-          {editInputType === "select" && (
-            <div className="space-y-2">
-              <span className="text-sm font-medium text-default-600">
-                Options
-              </span>
-              {editSelectOptions.map((opt, i) => (
-                <div key={i} className="flex gap-2">
-                  <Input
-                    placeholder="Value"
-                    size="sm"
-                    value={opt.value}
-                    onValueChange={(v) =>
-                      setEditSelectOptions((prev) => {
-                        const next = [...prev];
-
-                        next[i] = { ...next[i], value: v };
-
-                        return next;
-                      })
-                    }
-                  />
-                  <Input
-                    placeholder="Label"
-                    size="sm"
-                    value={opt.label}
-                    onValueChange={(v) =>
-                      setEditSelectOptions((prev) => {
-                        const next = [...prev];
-
-                        next[i] = { ...next[i], label: v };
-
-                        return next;
-                      })
-                    }
-                  />
-                  <Button
-                    color="danger"
-                    size="sm"
-                    variant="flat"
-                    onPress={() =>
-                      setEditSelectOptions((prev) =>
-                        prev.filter((_, j) => j !== i),
-                      )
-                    }
-                  >
-                    −
-                  </Button>
-                </div>
-              ))}
-              <Button
-                size="sm"
-                variant="flat"
-                onPress={() =>
-                  setEditSelectOptions((prev) => [
-                    ...prev,
-                    {
-                      value: `opt${prev.length + 1}`,
-                      label: `Option ${prev.length + 1}`,
-                    },
-                  ])
-                }
-              >
-                + Add option
-              </Button>
-            </div>
-          )}
-          {editInputType === "scale" && (
-            <div className="grid grid-cols-2 gap-2">
-              <Input
-                label="Min"
-                size="sm"
-                type="number"
-                value={String(editScaleConfig.min)}
-                onValueChange={(v) =>
-                  setEditScaleConfig((prev) => ({
-                    ...prev,
-                    min: Number(v) || 1,
-                  }))
-                }
-              />
-              <Input
-                label="Max"
-                size="sm"
-                type="number"
-                value={String(editScaleConfig.max)}
-                onValueChange={(v) =>
-                  setEditScaleConfig((prev) => ({
-                    ...prev,
-                    max: Number(v) || 5,
-                  }))
-                }
-              />
-            </div>
-          )}
-        </CardBody>
-      </Card>
-    );
-  }
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
 
   return (
-    <div className="group relative w-full">
+    <div className="group relative min-w-0 w-full">
       <DynamicFieldInput
+        editMode={editMode}
         cardinality="one to one"
+        description={block.description}
         inputType={block.inputType}
         label={block.label}
-        placeholder={block.description}
         propertyId={block.id}
         scaleConfig={block.scaleConfig}
         selectOptions={block.selectOptions}
+        trailingSlot={
+          editMode ? (
+            <FieldEditButton
+              customized={Boolean(
+                block.description ||
+                  block.emptyDefault ||
+                  block.selectOptions ||
+                  block.scaleConfig,
+              )}
+              fieldLabel={block.label}
+              onPress={() => setIsEditDialogOpen(true)}
+            />
+          ) : undefined
+        }
         value={value}
         onChange={onChange}
       />
-      <div className="absolute -right-1 -top-1 z-10 flex gap-1 rounded-lg bg-background/95 p-1 shadow-md opacity-0 transition-opacity group-hover:opacity-100">
-        {editMode && (
-          <Button
-            size="sm"
-            variant="flat"
-            onPress={() => {
-              setEditLabel(block.label ?? "");
-              setEditDescription(block.description ?? "");
-              setEditInputType(block.inputType);
-              setEditSelectOptions(
-                block.selectOptions ?? [
-                  { value: "opt1", label: "Option 1" },
-                  { value: "other", label: "Other" },
-                ],
-              );
-              setEditScaleConfig(block.scaleConfig ?? { min: 1, max: 5 });
-              setIsEditing(true);
-            }}
-          >
-            Edit
-          </Button>
-        )}
-        <Button color="danger" size="sm" variant="flat" onPress={onRemove}>
-          Remove
-        </Button>
-      </div>
+      {editMode ? (
+        <div className="mt-2 flex justify-end">
+          <BlockActionBar editMode={editMode} onRemove={onRemove} />
+        </div>
+      ) : null}
+      <CustomFieldEditDialog
+        block={block}
+        isOpen={isEditDialogOpen}
+        onClose={() => setIsEditDialogOpen(false)}
+        onSave={onUpdate}
+      />
     </div>
   );
 }

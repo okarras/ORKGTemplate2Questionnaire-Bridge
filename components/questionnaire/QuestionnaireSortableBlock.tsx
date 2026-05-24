@@ -25,6 +25,72 @@ import { SortableBlockWrapper } from "./SortableBlockItem";
 import { AddBlockDropdown, type AddBlockKind } from "./AddBlockDropdown";
 import { CUSTOM_PREFIX } from "./questionnaire-form-constants";
 
+/** Chevron icon for the collapsible header */
+function BlockChevron() {
+  return (
+    <svg
+      aria-hidden
+      className="q-chevron"
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      viewBox="0 0 24 24"
+    >
+      <path d="m6 9 6 6 6-6" />
+    </svg>
+  );
+}
+
+/** Block type badge label */
+function blockTypeLabel(
+  block: OrderedBlock,
+  customBlocks: Record<string, CustomBlock>,
+): { label: string; cssClass: string } {
+  if (block.kind === "property") {
+    return { label: "Property", cssClass: "q-type-badge--property" };
+  }
+  const custom = customBlocks[block.id];
+
+  if (!custom) return { label: "Block", cssClass: "q-type-badge--custom" };
+  switch (custom.type) {
+    case "text":
+      return { label: "Text", cssClass: "q-type-badge--text" };
+    case "html":
+      return { label: "HTML", cssClass: "q-type-badge--html" };
+    case "section":
+      return { label: "Section", cssClass: "q-type-badge--section" };
+    case "customField":
+      return { label: "Custom Field", cssClass: "q-type-badge--custom" };
+    default:
+      return { label: "Block", cssClass: "q-type-badge--custom" };
+  }
+}
+
+/** Block card variant class */
+function blockCardVariant(
+  block: OrderedBlock,
+  customBlocks: Record<string, CustomBlock>,
+): string {
+  if (block.kind === "property") return "q-block-card--property";
+  const custom = customBlocks[block.id];
+
+  if (!custom) return "";
+  switch (custom.type) {
+    case "text":
+      return "q-block-card--text";
+    case "html":
+      return "q-block-card--html";
+    case "section":
+      return "q-block-card--section";
+    case "customField":
+      return "q-block-card--custom";
+    default:
+      return "";
+  }
+}
+
 export interface QuestionnaireSortableBlockProps {
   sortId: string;
   block: OrderedBlock;
@@ -101,6 +167,9 @@ export function QuestionnaireSortableBlock({
           return custom.label ?? "Custom field";
         })();
 
+  const typeInfo = blockTypeLabel(block, customBlocks);
+  const cardVariant = blockCardVariant(block, customBlocks);
+
   const blockContent =
     block.kind === "property" ? (
       <>
@@ -135,7 +204,7 @@ export function QuestionnaireSortableBlock({
           onValueChange={(v) => setValue(block.id, v)}
         />
         {editMode && (
-          <div className="flex justify-center">
+          <div className="q-add-block-zone">
             <AddBlockDropdown addBlock={addBlock} afterIndex={index} />
           </div>
         )}
@@ -230,7 +299,7 @@ export function QuestionnaireSortableBlock({
           );
         })()}
         {editMode && (
-          <div className="flex justify-center">
+          <div className="q-add-block-zone">
             <AddBlockDropdown addBlock={addBlock} afterIndex={index} />
           </div>
         )}
@@ -240,40 +309,57 @@ export function QuestionnaireSortableBlock({
   return (
     <div
       key={sortId}
-      className="group/block rounded-xl border border-default-100 bg-background p-5 transition-colors hover:border-default-200"
+      className={`group/block q-block-card ${cardVariant}`}
     >
       <SortableBlockWrapper id={sortId} disabled={!editMode}>
-        <div className="flex w-full items-start justify-between gap-4">
+        <div className="flex w-full items-start justify-between gap-3 p-5">
           <div className="min-w-0 flex-1">
             <details className="group/qroot w-full" open>
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-2 rounded-lg px-1 py-1.5 text-left text-base font-semibold text-default-900 outline-none hover:bg-default-50 [&::-webkit-details-marker]:hidden">
-                <span className="truncate">{sectionSummaryTitle}</span>
-                <span
-                  aria-hidden
-                  className="shrink-0 text-[10px] text-default-400 transition-transform duration-200 group-open/qroot:rotate-180"
-                >
-                  ▼
-                </span>
+              <summary className="flex cursor-pointer list-none items-center gap-3 rounded-lg px-1 py-1.5 text-left outline-none hover:bg-default-50/80 [&::-webkit-details-marker]:hidden">
+                <div className="flex min-w-0 flex-1 items-center gap-2.5">
+                  {editMode && (
+                    <span className={`q-type-badge ${typeInfo.cssClass}`}>
+                      {typeInfo.label}
+                    </span>
+                  )}
+                  <span className="min-w-0 truncate text-base font-semibold text-default-900">
+                    {sectionSummaryTitle}
+                  </span>
+                </div>
+                <BlockChevron />
               </summary>
-              <div className="mt-3 border-t border-default-100 pt-3">
+              <div className="q-collapsible-content mt-3 min-w-0 border-t border-default-100 pt-4">
                 {blockContent}
               </div>
             </details>
           </div>
-          <Button
-            className={
-              editMode
-                ? "opacity-70 hover:opacity-100"
-                : "opacity-0 transition-opacity group-hover/block:opacity-70 hover:opacity-100"
-            }
-            color="danger"
-            size="sm"
-            title="Remove this block"
-            variant="light"
-            onPress={() => removeBlock(block)}
-          >
-            Remove
-          </Button>
+          {editMode && (
+            <Button
+              className="shrink-0 opacity-60 hover:opacity-100 transition-opacity"
+              color="danger"
+              isIconOnly
+              size="sm"
+              title="Remove this block"
+              variant="light"
+              onPress={() => removeBlock(block)}
+            >
+              <svg
+                aria-hidden
+                fill="none"
+                height="16"
+                stroke="currentColor"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                viewBox="0 0 24 24"
+                width="16"
+              >
+                <path d="M3 6h18" />
+                <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+                <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+              </svg>
+            </Button>
+          )}
         </div>
       </SortableBlockWrapper>
     </div>

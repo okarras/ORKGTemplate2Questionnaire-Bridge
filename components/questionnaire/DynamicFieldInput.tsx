@@ -3,10 +3,17 @@
 import type { InputType } from "@/types/template";
 import type { ScaleConfig, SelectOption } from "./QuestionnaireForm";
 
-import { useMemo, useState } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import { Input, Textarea } from "@heroui/input";
 import { Select, SelectItem } from "@heroui/select";
-import { Checkbox } from "@heroui/checkbox";
+import { Switch } from "@heroui/switch";
 import { RadioGroup, Radio } from "@heroui/radio";
 import { Button } from "@heroui/button";
 
@@ -20,6 +27,8 @@ interface DynamicFieldInputProps {
   propertyId: string;
   label: string;
   inputType: InputType;
+  /** Description text shown above the input field */
+  description?: string;
   placeholder?: string;
   value: FieldValue;
   onChange: (value: FieldValue) => void;
@@ -59,11 +68,38 @@ interface DynamicFieldInputProps {
     pickDefaultFromSelectOptions?: SelectOption[];
     onPickDefaultOption?: (value: string) => void;
   };
+  /** Whether the form is in edit mode */
+  editMode?: boolean;
+  /** Shown beside the control (e.g. field customize button in edit mode). */
+  trailingSlot?: ReactNode;
 }
 
-const fieldInputClass = "w-full data-[focus=true]:border-primary";
+/** Fills the `.q-field-control` column (80% of section width via CSS variable). */
+const fieldInputClass = "w-full min-w-0";
 const inputWrapperClass =
-  "rounded-lg border-default-200 data-[focus=true]:border-primary transition-colors";
+  "min-w-0 w-full rounded-lg border border-default-300 bg-content1 shadow-sm data-[hover=true]:border-default-400 data-[focus=true]:border-primary data-[focus=true]:ring-2 data-[focus=true]:ring-primary/20 transition-[border-color,box-shadow]";
+const selectTriggerClassNames = {
+  base: "w-full min-w-0",
+  mainWrapper: "w-full min-w-0",
+  trigger: inputWrapperClass,
+  innerWrapper: "min-w-0 w-full",
+  value: "min-w-0 truncate",
+  selectorIcon: "shrink-0",
+};
+const textInputClassNames = {
+  base: "w-full min-w-0",
+  mainWrapper: "w-full min-w-0",
+  inputWrapper: inputWrapperClass,
+  innerWrapper: "w-full min-w-0",
+  input: "min-w-0 w-full",
+};
+const booleanSwitchClassNames = {
+  base: "q-boolean-switch m-0 min-w-0 w-full",
+  wrapper:
+    "group-data-[selected=true]:bg-primary border-default-300 group-data-[selected=true]:border-primary",
+  thumb: "bg-white shadow-sm",
+  label: "text-sm font-medium text-default-700",
+};
 
 const DEFAULT_SELECT_OPTIONS: SelectOption[] = [
   { value: "option1", label: "Option 1" },
@@ -75,18 +111,130 @@ const DEFAULT_SELECT_OPTIONS: SelectOption[] = [
 const isOneToMany = (cardinality?: string) =>
   cardinality?.toLowerCase() === "one to many";
 
+/** Renders description text above a field (skipped when it duplicates the label/title). */
+function FieldDescription({ text, label }: { text?: string; label: string }) {
+  const trimmed = text?.trim();
+
+  if (!trimmed) return null;
+  if (trimmed.toLowerCase() === label.trim().toLowerCase()) return null;
+
+  return <p className="q-field-description">{trimmed}</p>;
+}
+
+function FieldLabelRow({
+  hideLabel,
+  label,
+  classId,
+  propertyId,
+}: {
+  hideLabel: boolean;
+  label: string;
+  classId?: string;
+  propertyId: string;
+}) {
+  if (hideLabel) {
+    return <span className="sr-only">{label}</span>;
+  }
+
+  return <FieldLabel classId={classId} label={label} propertyId={propertyId} />;
+}
+
+function FieldControlRow({
+  trailing,
+  children,
+}: {
+  trailing?: ReactNode;
+  children: ReactNode;
+}) {
+  if (!trailing) {
+    return <div className="q-field-control min-w-0">{children}</div>;
+  }
+
+  return (
+    <div className="q-field-control-row">
+      <div className="q-field-control min-w-0">{children}</div>
+      <div className="q-field-edit-action">{trailing}</div>
+    </div>
+  );
+}
+
+/** Local draft + debounced commit so typing does not re-render the whole questionnaire on each key. */
+const DebouncedTextField = memo(function DebouncedTextField({
+  id,
+  label,
+  ariaLabel,
+  placeholder,
+  value,
+  onChange,
+  multiline = false,
+  type = "text",
+  classNames,
+}: {
+  id: string;
+  label?: ReactNode;
+  ariaLabel?: string;
+  placeholder?: string;
+  value: string;
+  onChange: (value: string) => void;
+  multiline?: boolean;
+  type?: string;
+  classNames: typeof textInputClassNames;
+}) {
+  const [draft, setDraft] = useState(value);
+
+  useEffect(() => {
+    setDraft(value);
+  }, [value]);
+
+  const commit = useCallback(
+    (next: string) => {
+      if (next !== value) onChange(next);
+    },
+    [onChange, value],
+  );
+
+  useEffect(() => {
+    if (draft === value) return;
+    const t = window.setTimeout(() => commit(draft), 200);
+
+    return () => window.clearTimeout(t);
+  }, [draft, value, commit]);
+
+  const shared = {
+    id,
+    "aria-label": ariaLabel,
+    className: fieldInputClass,
+    classNames,
+    label,
+    labelPlacement: "outside" as const,
+    placeholder,
+    value: draft,
+    variant: "bordered" as const,
+    onValueChange: setDraft,
+    onBlur: () => commit(draft),
+  };
+
+  if (multiline) {
+    return <Textarea {...shared} minRows={3} />;
+  }
+
+  return <Input {...shared} type={type} />;
+});
+
 function FillModeDefaultFooter({
   controls,
   disableSave,
   defaultPickerOpen,
   setDefaultPickerOpen,
+  editMode,
 }: {
   controls?: DynamicFieldInputProps["fillModeDefaultControls"];
   disableSave?: boolean;
   defaultPickerOpen?: boolean;
   setDefaultPickerOpen?: (open: boolean) => void;
+  editMode?: boolean;
 }) {
-  if (!controls) return null;
+  if (!controls || !editMode) return null;
 
   const pickOpts = controls.pickDefaultFromSelectOptions;
   const showPicker =
@@ -96,11 +244,11 @@ function FillModeDefaultFooter({
     setDefaultPickerOpen;
 
   return (
-    <div className="mt-2 border-t border-default-200 pt-2">
-      <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-default-500">
+    <div className="mt-3 rounded-lg border border-default-100 bg-default-50/50 p-3">
+      <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-default-400">
         Fill mode — default if left empty
       </p>
-      <p className="mb-2 text-[11px] leading-snug text-default-500">
+      <p className="mb-2 text-[11px] leading-snug text-default-400">
         When you leave this field empty, the saved default is used for preview,
         PDF export, and ORKG submit.
       </p>
@@ -175,6 +323,7 @@ export function DynamicFieldInput({
   propertyId,
   label,
   inputType,
+  description,
   placeholder,
   value,
   onChange,
@@ -187,6 +336,8 @@ export function DynamicFieldInput({
   resourceOptionsScope,
   onResourceOptionsSnapshot,
   fillModeDefaultControls,
+  editMode,
+  trailingSlot,
 }: DynamicFieldInputProps) {
   const id = `field-${propertyId}`;
   const multiselect = isOneToMany(cardinality);
@@ -207,85 +358,138 @@ export function DynamicFieldInput({
 
     return out;
   }, [selectOptions]);
+  const useExternalLabel = Boolean(trailingSlot);
   const visibleLabel = hideLabel ? (
     <span className="sr-only">{label}</span>
   ) : (
     <FieldLabel classId={classId} label={label} propertyId={propertyId} />
   );
 
+  /** Generic hint placeholder — never the description */
+  const hintPlaceholder =
+    placeholder ??
+    (() => {
+      switch (inputType) {
+        case "text":
+          return `Enter ${label.toLowerCase()}…`;
+        case "textarea":
+          return `Enter ${label.toLowerCase()}…`;
+        case "number":
+          return "Enter number…";
+        case "date":
+          return "Select date…";
+        case "select":
+          return multiselect ? `Select one or more…` : `Select an option…`;
+        default:
+          return `Enter ${label.toLowerCase()}…`;
+      }
+    })();
+
   switch (inputType) {
     case "text":
       return (
-        <div className="flex flex-col gap-1.5">
-          <Input
-            className={fieldInputClass}
-            classNames={{
-              inputWrapper: inputWrapperClass,
-            }}
-            id={id}
-            label={visibleLabel}
-            labelPlacement="outside"
-            placeholder={placeholder ?? `Enter ${label.toLowerCase()}...`}
-            value={typeof value === "string" ? value : ""}
-            onValueChange={(v) => onChange(v)}
-          />
+        <div className="q-field-card flex min-w-0 flex-col gap-1.5">
+          <FieldDescription label={label} text={description} />
+          {useExternalLabel ? (
+            <FieldLabelRow
+              classId={classId}
+              hideLabel={hideLabel}
+              label={label}
+              propertyId={propertyId}
+            />
+          ) : null}
+          <FieldControlRow trailing={trailingSlot}>
+            <DebouncedTextField
+              ariaLabel={hideLabel || useExternalLabel ? label : undefined}
+              classNames={textInputClassNames}
+              id={id}
+              label={useExternalLabel || hideLabel ? undefined : visibleLabel}
+              placeholder={hintPlaceholder}
+              value={typeof value === "string" ? value : ""}
+              onChange={(v) => onChange(v)}
+            />
+          </FieldControlRow>
           <FillModeDefaultFooter
             controls={fillModeDefaultControls}
             disableSave={typeof value !== "string" || value.trim().length === 0}
+            editMode={editMode}
           />
         </div>
       );
 
     case "textarea":
       return (
-        <div className="flex flex-col gap-1.5">
-          <Textarea
-            className={fieldInputClass}
-            classNames={{
-              inputWrapper: inputWrapperClass,
-            }}
-            id={id}
-            label={visibleLabel}
-            labelPlacement="outside"
-            minRows={3}
-            placeholder={placeholder ?? `Enter ${label.toLowerCase()}...`}
-            value={typeof value === "string" ? value : ""}
-            onValueChange={(v) => onChange(v)}
-          />
+        <div className="q-field-card flex min-w-0 flex-col gap-1.5">
+          <FieldDescription label={label} text={description} />
+          {useExternalLabel ? (
+            <FieldLabelRow
+              classId={classId}
+              hideLabel={hideLabel}
+              label={label}
+              propertyId={propertyId}
+            />
+          ) : null}
+          <FieldControlRow trailing={trailingSlot}>
+            <DebouncedTextField
+              multiline
+              ariaLabel={hideLabel || useExternalLabel ? label : undefined}
+              classNames={textInputClassNames}
+              id={id}
+              label={useExternalLabel || hideLabel ? undefined : visibleLabel}
+              placeholder={hintPlaceholder}
+              value={typeof value === "string" ? value : ""}
+              onChange={(v) => onChange(v)}
+            />
+          </FieldControlRow>
           <FillModeDefaultFooter
             controls={fillModeDefaultControls}
             disableSave={typeof value !== "string" || value.trim().length === 0}
+            editMode={editMode}
           />
         </div>
       );
 
     case "number":
       return (
-        <div className="flex flex-col gap-1.5">
-          <Input
-            className={fieldInputClass}
-            classNames={{
-              inputWrapper: inputWrapperClass,
-            }}
-            id={id}
-            label={visibleLabel}
-            labelPlacement="outside"
-            placeholder={placeholder ?? `Enter number...`}
-            type="number"
-            value={
-              typeof value === "number"
-                ? String(value)
-                : value === "" || value === undefined
-                  ? ""
-                  : String(value)
-            }
-            onValueChange={(v) =>
-              onChange(v === "" ? "" : Number.isNaN(Number(v)) ? v : Number(v))
-            }
-          />
+        <div className="q-field-card flex min-w-0 flex-col gap-1.5">
+          <FieldDescription label={label} text={description} />
+          {useExternalLabel ? (
+            <FieldLabelRow
+              classId={classId}
+              hideLabel={hideLabel}
+              label={label}
+              propertyId={propertyId}
+            />
+          ) : null}
+          <FieldControlRow trailing={trailingSlot}>
+            <Input
+              aria-label={hideLabel || useExternalLabel ? label : undefined}
+              className={fieldInputClass}
+              classNames={textInputClassNames}
+              id={id}
+              label={useExternalLabel || hideLabel ? undefined : visibleLabel}
+              labelPlacement="outside"
+              placeholder={hintPlaceholder}
+              type="number"
+              value={
+                typeof value === "number"
+                  ? String(value)
+                  : value === "" || value === undefined
+                    ? ""
+                    : String(value)
+              }
+              variant="bordered"
+              onValueChange={(v) =>
+                onChange(
+                  v === "" ? "" : Number.isNaN(Number(v)) ? v : Number(v),
+                )
+              }
+            />
+          </FieldControlRow>
           <FillModeDefaultFooter
             controls={fillModeDefaultControls}
             disableSave={value === "" || value === undefined}
+            editMode={editMode}
           />
         </div>
       );
@@ -309,75 +513,80 @@ export function DynamicFieldInput({
       );
 
       return (
-        <div className="flex flex-col gap-1.5">
-          <Select
-            aria-label={hideLabel ? label : undefined}
-            className={fieldInputClass}
-            classNames={{
-              trigger: inputWrapperClass,
-            }}
-            id={id}
-            isOpen={selectOpen}
-            label={hideLabel ? undefined : visibleLabel}
-            labelPlacement="outside"
-            placeholder={
-              placeholder ??
-              (multiselect
-                ? `Select one or more ${label.toLowerCase()}...`
-                : `Select ${label.toLowerCase()}...`)
-            }
-            selectedKeys={
-              multiselect
-                ? new Set(
-                    (Array.isArray(value) ? value : []).map(
-                      (v) =>
-                        dedupedSelectOptions.find(
-                          (o) => o.value === v || o.label === v,
-                        )?.value ?? String(v),
-                    ),
-                  )
-                : (() => {
-                    const val = typeof value === "string" ? value : "";
+        <div className="q-field-card flex min-w-0 flex-col gap-1.5">
+          <FieldDescription label={label} text={description} />
+          {useExternalLabel ? (
+            <FieldLabelRow
+              classId={classId}
+              hideLabel={hideLabel}
+              label={label}
+              propertyId={propertyId}
+            />
+          ) : null}
+          <FieldControlRow trailing={trailingSlot}>
+            <Select
+              aria-label={hideLabel || useExternalLabel ? label : undefined}
+              className={fieldInputClass}
+              classNames={selectTriggerClassNames}
+              id={id}
+              isOpen={selectOpen}
+              label={useExternalLabel || hideLabel ? undefined : visibleLabel}
+              labelPlacement="outside"
+              placeholder={hintPlaceholder}
+              selectedKeys={
+                multiselect
+                  ? new Set(
+                      (Array.isArray(value) ? value : []).map(
+                        (v) =>
+                          dedupedSelectOptions.find(
+                            (o) => o.value === v || o.label === v,
+                          )?.value ?? String(v),
+                      ),
+                    )
+                  : (() => {
+                      const val = typeof value === "string" ? value : "";
 
-                    if (!val) return new Set();
-                    const match = dedupedSelectOptions.find(
-                      (o) => o.value === val || o.label === val,
-                    );
+                      if (!val) return new Set();
+                      const match = dedupedSelectOptions.find(
+                        (o) => o.value === val || o.label === val,
+                      );
 
-                    return new Set([match ? match.value : val]);
-                  })()
-            }
-            selectionMode={multiselect ? "multiple" : "single"}
-            selectorIcon={selectChevron}
-            onOpenChange={setSelectOpen}
-            onSelectionChange={(keys) => {
-              if (multiselect) {
-                if (keys === "all") {
-                  onChange(dedupedSelectOptions.map((o) => o.value));
-
-                  return;
-                }
-                const next =
-                  keys instanceof Set ? Array.from(keys).map(String) : [];
-
-                onChange(next);
-              } else {
-                if (keys === "all") {
-                  onChange("");
-
-                  return;
-                }
-                const selected =
-                  keys instanceof Set ? Array.from(keys)[0] : undefined;
-
-                onChange(selected != null ? String(selected) : "");
+                      return new Set([match ? match.value : val]);
+                    })()
               }
-            }}
-          >
-            {dedupedSelectOptions.map((opt) => (
-              <SelectItem key={opt.value}>{opt.label}</SelectItem>
-            ))}
-          </Select>
+              selectionMode={multiselect ? "multiple" : "single"}
+              selectorIcon={selectChevron}
+              variant="bordered"
+              onOpenChange={setSelectOpen}
+              onSelectionChange={(keys) => {
+                if (multiselect) {
+                  if (keys === "all") {
+                    onChange(dedupedSelectOptions.map((o) => o.value));
+
+                    return;
+                  }
+                  const next =
+                    keys instanceof Set ? Array.from(keys).map(String) : [];
+
+                  onChange(next);
+                } else {
+                  if (keys === "all") {
+                    onChange("");
+
+                    return;
+                  }
+                  const selected =
+                    keys instanceof Set ? Array.from(keys)[0] : undefined;
+
+                  onChange(selected != null ? String(selected) : "");
+                }
+              }}
+            >
+              {dedupedSelectOptions.map((opt) => (
+                <SelectItem key={opt.value}>{opt.label}</SelectItem>
+              ))}
+            </Select>
+          </FieldControlRow>
           <FillModeDefaultFooter
             controls={fillModeDefaultControls}
             defaultPickerOpen={defaultPickerOpen}
@@ -386,6 +595,7 @@ export function DynamicFieldInput({
                 ? !Array.isArray(value) || value.length === 0
                 : typeof value !== "string" || value.trim().length === 0
             }
+            editMode={editMode}
             setDefaultPickerOpen={setDefaultPickerOpen}
           />
         </div>
@@ -412,35 +622,36 @@ export function DynamicFieldInput({
             : undefined;
 
       return (
-        <div className="flex flex-col gap-3">
-          {hideLabel ? (
-            <span className="sr-only">{label}</span>
-          ) : (
-            <FieldLabel
-              classId={undefined}
-              label={label}
-              propertyId={propertyId}
-            />
-          )}
-          <RadioGroup
-            classNames={{ wrapper: "flex-wrap gap-2" }}
-            orientation="horizontal"
-            value={currentVal != null ? String(currentVal) : undefined}
-            onValueChange={(v) => onChange(v ? Number(v) : "")}
-          >
-            {labels.map((opt) => (
-              <Radio
-                key={opt.value}
-                classNames={{ base: "m-0" }}
-                value={opt.value}
-              >
-                {opt.label}
-              </Radio>
-            ))}
-          </RadioGroup>
+        <div className="q-field-card flex min-w-0 flex-col gap-2">
+          <FieldLabelRow
+            classId={undefined}
+            hideLabel={hideLabel}
+            label={label}
+            propertyId={propertyId}
+          />
+          <FieldDescription label={label} text={description} />
+          <FieldControlRow trailing={trailingSlot}>
+            <RadioGroup
+              classNames={{ wrapper: "flex-wrap gap-2" }}
+              orientation="horizontal"
+              value={currentVal != null ? String(currentVal) : undefined}
+              onValueChange={(v) => onChange(v ? Number(v) : "")}
+            >
+              {labels.map((opt) => (
+                <Radio
+                  key={opt.value}
+                  classNames={{ base: "m-0" }}
+                  value={opt.value}
+                >
+                  {opt.label}
+                </Radio>
+              ))}
+            </RadioGroup>
+          </FieldControlRow>
           <FillModeDefaultFooter
             controls={fillModeDefaultControls}
             disableSave={currentVal === undefined || currentVal === null}
+            editMode={editMode}
           />
         </div>
       );
@@ -448,68 +659,103 @@ export function DynamicFieldInput({
 
     case "checkbox": {
       const coerced = normalizeCheckboxFormValue(value);
+      const isOn = coerced === true;
 
       return (
-        <div className="flex flex-col gap-1.5">
-          <Checkbox
-            classNames={{ base: "max-w-full", label: "text-primary/90" }}
-            id={id}
-            isSelected={coerced === true}
-            onValueChange={(checked) => onChange(checked)}
-          >
-            {hideLabel ? (
-              <span className="sr-only">{label}</span>
-            ) : (
-              <FieldLabel
-                classId={classId}
-                label={label}
-                propertyId={propertyId}
-              />
-            )}
-          </Checkbox>
-          <FillModeDefaultFooter controls={fillModeDefaultControls} />
+        <div className="q-field-card flex min-w-0 flex-col gap-1.5">
+          <FieldDescription label={label} text={description} />
+          <FieldLabelRow
+            classId={classId}
+            hideLabel={hideLabel}
+            label={label}
+            propertyId={propertyId}
+          />
+          <FieldControlRow trailing={trailingSlot}>
+            <div
+              className={`q-boolean-field w-full ${isOn ? "q-boolean-field--on" : ""}`}
+            >
+              <Switch
+                aria-label={hideLabel ? label : undefined}
+                className={fieldInputClass}
+                classNames={booleanSwitchClassNames}
+                id={id}
+                isSelected={isOn}
+                onValueChange={(checked) => onChange(checked)}
+              >
+                {isOn ? "Yes" : "No"}
+              </Switch>
+            </div>
+          </FieldControlRow>
+          <FillModeDefaultFooter
+            controls={fillModeDefaultControls}
+            editMode={editMode}
+          />
         </div>
       );
     }
 
     case "date":
       return (
-        <div className="flex flex-col gap-1.5">
-          <Input
-            className={fieldInputClass}
-            classNames={{
-              inputWrapper: inputWrapperClass,
-            }}
-            id={id}
-            label={visibleLabel}
-            labelPlacement="outside"
-            type="date"
-            value={typeof value === "string" ? value : ""}
-            onValueChange={(v) => onChange(v)}
-          />
+        <div className="q-field-card flex min-w-0 flex-col gap-1.5">
+          <FieldDescription label={label} text={description} />
+          {useExternalLabel ? (
+            <FieldLabelRow
+              classId={classId}
+              hideLabel={hideLabel}
+              label={label}
+              propertyId={propertyId}
+            />
+          ) : null}
+          <FieldControlRow trailing={trailingSlot}>
+            <Input
+              aria-label={hideLabel || useExternalLabel ? label : undefined}
+              className={fieldInputClass}
+              classNames={textInputClassNames}
+              id={id}
+              label={useExternalLabel || hideLabel ? undefined : visibleLabel}
+              labelPlacement="outside"
+              type="date"
+              value={typeof value === "string" ? value : ""}
+              variant="bordered"
+              onValueChange={(v) => onChange(v)}
+            />
+          </FieldControlRow>
           <FillModeDefaultFooter
             controls={fillModeDefaultControls}
             disableSave={typeof value !== "string" || value.trim().length === 0}
+            editMode={editMode}
           />
         </div>
       );
 
     case "resource":
       return (
-        <div className="flex flex-col gap-1.5">
-          <ResourceAutoselect
-            classId={classId}
-            hideLabel={hideLabel}
-            label={label}
-            multiselect={multiselect}
-            optionsScopeKey={resourceOptionsScope ?? propertyId}
-            placeholder={placeholder}
-            propertyId={propertyId}
-            selectOptions={selectOptions}
-            value={value}
-            onChange={onChange}
-            onResourceOptionsSnapshot={onResourceOptionsSnapshot}
-          />
+        <div className="q-field-card flex min-w-0 flex-col gap-1.5">
+          <FieldDescription label={label} text={description} />
+          {useExternalLabel ? (
+            <FieldLabelRow
+              classId={classId}
+              hideLabel={hideLabel}
+              label={label}
+              propertyId={propertyId}
+            />
+          ) : null}
+          <div className="q-field-control min-w-0 w-full">
+            <ResourceAutoselect
+              classId={classId}
+              hideLabel={hideLabel || useExternalLabel}
+              label={label}
+              multiselect={multiselect}
+              optionsScopeKey={resourceOptionsScope ?? propertyId}
+              placeholder={hintPlaceholder}
+              propertyId={propertyId}
+              selectOptions={selectOptions}
+              trailingAction={trailingSlot}
+              value={value}
+              onChange={onChange}
+              onResourceOptionsSnapshot={onResourceOptionsSnapshot}
+            />
+          </div>
           <FillModeDefaultFooter
             controls={fillModeDefaultControls}
             disableSave={
@@ -518,28 +764,38 @@ export function DynamicFieldInput({
                 : !value ||
                   (typeof value === "string" && value.trim().length === 0)
             }
+            editMode={editMode}
           />
         </div>
       );
 
     default:
       return (
-        <div className="flex flex-col gap-1.5">
-          <Input
-            className={fieldInputClass}
-            classNames={{
-              inputWrapper: inputWrapperClass,
-            }}
-            id={id}
-            label={visibleLabel}
-            labelPlacement="outside"
-            placeholder={placeholder ?? `Enter ${label.toLowerCase()}...`}
-            value={typeof value === "string" ? value : ""}
-            onValueChange={(v) => onChange(v)}
-          />
+        <div className="q-field-card flex min-w-0 flex-col gap-1.5">
+          <FieldDescription label={label} text={description} />
+          {useExternalLabel ? (
+            <FieldLabelRow
+              classId={classId}
+              hideLabel={hideLabel}
+              label={label}
+              propertyId={propertyId}
+            />
+          ) : null}
+          <FieldControlRow trailing={trailingSlot}>
+            <DebouncedTextField
+              ariaLabel={hideLabel || useExternalLabel ? label : undefined}
+              classNames={textInputClassNames}
+              id={id}
+              label={useExternalLabel || hideLabel ? undefined : visibleLabel}
+              placeholder={hintPlaceholder}
+              value={typeof value === "string" ? value : ""}
+              onChange={(v) => onChange(v)}
+            />
+          </FieldControlRow>
           <FillModeDefaultFooter
             controls={fillModeDefaultControls}
             disableSave={typeof value !== "string" || value.trim().length === 0}
+            editMode={editMode}
           />
         </div>
       );

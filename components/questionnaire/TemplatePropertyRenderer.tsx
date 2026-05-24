@@ -8,23 +8,19 @@ import type { InputType } from "@/types/template";
 import type {
   FieldOverrides,
   FormValue,
-  ScaleConfig,
   SelectOption,
 } from "./QuestionnaireForm";
 import type { CustomBlock } from "@/types/template";
 
 import { useState, useCallback, useEffect, useMemo } from "react";
-import { Accordion, AccordionItem } from "@heroui/accordion";
 import { Button } from "@heroui/button";
-import { Input } from "@heroui/input";
-import { Textarea } from "@heroui/input";
-import { Select, SelectItem } from "@heroui/select";
 import {
   Dropdown,
   DropdownItem,
   DropdownMenu,
   DropdownTrigger,
 } from "@heroui/dropdown";
+import { Chip } from "@heroui/chip";
 
 import { ResourceLabelCache } from "@/lib/resource-label-cache";
 
@@ -40,26 +36,29 @@ import {
   getInputTypeForProperty,
   getInputTypeFromValueType,
 } from "./input-type-utils";
-import { ResourceFilterDialog } from "./ResourceFilterDialog";
+import { FieldCustomizeDialog } from "./FieldCustomizeDialog";
+import { FieldEditButton } from "./FieldEditButton";
+import { formatStoredMultiDefault } from "./field-default-value-utils";
 
 type PropertyValue = string | number | boolean | string[];
-
-const INPUT_TYPE_OPTIONS: { value: InputType; label: string }[] = [
-  { value: "text", label: "Text" },
-  { value: "textarea", label: "Long text (textarea)" },
-  { value: "number", label: "Number" },
-  { value: "select", label: "Dropdown (select)" },
-  { value: "scale", label: "Scale / rating (e.g. 1–5, Difficult→Easy)" },
-  { value: "checkbox", label: "Checkbox" },
-  { value: "date", label: "Date" },
-  { value: "resource", label: "Resource (ORKG autocomplete)" },
-];
 
 function isOneToOneCardinality(cardinality?: string): boolean {
   if (!cardinality) return true;
   const n = cardinality.toLowerCase().replace(/-/g, " ");
 
   return n === "one to one" || n === "1 to 1" || n === "1:1";
+}
+
+/** Hide description copy when it only repeats the field/section title. */
+function descriptionDiffersFromLabel(
+  description: string | undefined,
+  label: string,
+): boolean {
+  const d = description?.trim();
+
+  if (!d) return false;
+
+  return d.toLowerCase() !== label.trim().toLowerCase();
 }
 
 function toPropertyValue(v: FormValue | undefined): PropertyValue {
@@ -82,7 +81,7 @@ function summaryForStoredEmptyDefault(
 
   if (!t) return stored;
   const parts = t
-    .split(/[,|]/)
+    .split(/[|,]/)
     .map((s) => s.trim())
     .filter(Boolean);
 
@@ -116,6 +115,10 @@ function serializeCurrentForEmptyDefault(
   if (many && Array.isArray(v)) {
     if (v.length === 0) return null;
 
+    if (inputType === "resource") {
+      return formatStoredMultiDefault(v.map(String));
+    }
+
     return v.map(String).join(",");
   }
 
@@ -140,6 +143,31 @@ function serializeCurrentForEmptyDefault(
   }
 
   return null;
+}
+
+/** Chevron icon for collapsible sections */
+function ChevronIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      aria-hidden
+      className={`q-chevron ${className ?? ""}`}
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      viewBox="0 0 24 24"
+    >
+      <path d="m6 9 6 6 6-6" />
+    </svg>
+  );
+}
+
+/** Depth-based accent color style for a property */
+function depthStyle(depth: number): React.CSSProperties {
+  const depthVal = Math.min(depth, 3);
+
+  return { borderLeftColor: `var(--q-depth-${depthVal})` };
 }
 
 interface TemplatePropertyRendererProps {
@@ -221,17 +249,7 @@ export function TemplatePropertyRenderer({
   sectionTitleRenderedExternally = false,
 }: TemplatePropertyRendererProps) {
   const [internalValue, setInternalValue] = useState<PropertyValue>("");
-  const [isEditing, setIsEditing] = useState(false);
-  const [editLabel, setEditLabel] = useState("");
-  const [editDescription, setEditDescription] = useState("");
-  const [editSelectOptions, setEditSelectOptions] = useState<SelectOption[]>(
-    [],
-  );
-  const [editScaleConfig, setEditScaleConfig] = useState<ScaleConfig>({
-    min: 1,
-    max: 5,
-  });
-  const [isFilterDialogOpen, setIsFilterDialogOpen] = useState(false);
+  const [isCustomizeOpen, setIsCustomizeOpen] = useState(false);
   const [nestedAddMenuOpen, setNestedAddMenuOpen] = useState(false);
   const [orkgResourceOptionsForAi, setOrkgResourceOptionsForAi] = useState<
     SelectOption[]
@@ -355,8 +373,7 @@ export function TemplatePropertyRenderer({
         if (!serialized) return;
         onFieldOverride(propertyPath, { emptyDefault: serialized });
       },
-      onClear: () =>
-        onFieldOverride(propertyPath, { emptyDefault: undefined }),
+      onClear: () => onFieldOverride(propertyPath, { emptyDefault: undefined }),
       onClearAnswer,
       pickDefaultFromSelectOptions:
         inputType === "select" && !many && dedupedPickOpts.length > 0
@@ -379,57 +396,16 @@ export function TemplatePropertyRenderer({
     onChange,
   ]);
 
-  const handleSaveEdit = useCallback(() => {
-    const payload: Partial<FieldOverrides[string]> = {
-      label: editLabel.trim() || undefined,
-      description: editDescription.trim() || undefined,
-    };
-
-    if (inputType === "select" || inputType === "resource") {
-      const validOptions = editSelectOptions.filter(
-        (o) => o.value.trim() || o.label.trim(),
-      );
-
-      if (validOptions.length > 0) {
-        payload.selectOptions = validOptions;
-      } else {
-        payload.selectOptions = [];
-      }
-    }
-    if (inputType === "scale") {
-      payload.scaleConfig = editScaleConfig;
-    }
-    onFieldOverride?.(propertyPath, payload);
-    setIsEditing(false);
-  }, [
-    onFieldOverride,
-    propertyPath,
-    editLabel,
-    editDescription,
-    editSelectOptions,
-    editScaleConfig,
-    inputType,
-  ]);
-
   const handleFieldTypeChange = useCallback(
-    (
-      keys: Parameters<
-        NonNullable<React.ComponentProps<typeof Select>["onSelectionChange"]>
-      >[0],
-    ) => {
-      const keySet = keys instanceof Set ? keys : new Set<string>();
-      const first = keySet.values().next().value;
-
-      if (first != null) {
-        onFieldOverride?.(propertyPath, {
-          inputType: String(first) as InputType,
-        });
-      }
+    (nextType: InputType) => {
+      onFieldOverride?.(propertyPath, { inputType: nextType });
     },
     [onFieldOverride, propertyPath],
   );
 
+  const treatAsResource = overrides?.treatAsResource ?? false;
   const hasSubproperties =
+    !treatAsResource &&
     property.subtemplate_properties &&
     Object.keys(property.subtemplate_properties).length > 0;
 
@@ -443,306 +419,39 @@ export function TemplatePropertyRenderer({
       overrides?.description ??
       overrides?.inputType ??
       overrides?.selectOptions ??
-      overrides?.scaleConfig,
+      overrides?.scaleConfig ??
+      overrides?.emptyDefault ??
+      overrides?.showInHeader ??
+      overrides?.treatAsResource,
   );
-  const fieldEditorUi = canEdit && editMode && (
-    <Accordion
-      className="mt-3 w-full gap-0 px-0"
-      itemClasses={{
-        base: "border-default-200 rounded-xl overflow-hidden shadow-sm",
-      }}
-      variant="bordered"
-    >
-      <AccordionItem
-        key="edit"
-        aria-label="Customize field"
-        classNames={{
-          trigger:
-            "py-2.5 px-4 data-[hover=true]:bg-default-100/80 min-h-0 rounded-xl",
-          content: "px-4 pb-4 pt-1",
-          title: "text-sm font-medium text-default-600",
-        }}
-        startContent={
-          hasOverrides ? (
-            <span className="rounded-full bg-primary/15 px-2 py-0.5 text-xs font-medium text-primary">
-              Customized
-            </span>
-          ) : null
-        }
-        subtitle={!isEditing ? "Label, description, type, options" : undefined}
-      >
-        <div className="space-y-3">
-          {!isEditing ? (
-            <div className="flex items-center gap-2">
-              <Button
-                color="primary"
-                size="sm"
-                variant="flat"
-                onPress={() => {
-                  const o = fieldOverrides[propertyPath];
-
-                  setEditLabel(o?.label ?? property.label);
-                  setEditDescription(
-                    o?.description ?? property.description ?? "",
-                  );
-                  const currentType = o?.inputType ?? inputType;
-
-                  setEditSelectOptions(
-                    o?.selectOptions ??
-                      (currentType === "resource"
-                        ? []
-                        : [
-                            { value: "option1", label: "Option 1" },
-                            { value: "other", label: "Other/Comments" },
-                          ]),
-                  );
-                  setEditScaleConfig(
-                    o?.scaleConfig ?? {
-                      min: 1,
-                      max: 5,
-                      minLabel: "Low",
-                      maxLabel: "High",
-                    },
-                  );
-                  setIsEditing(true);
-                }}
-              >
-                Edit field
-              </Button>
-            </div>
-          ) : (
-            <>
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium text-default-600">
-                  Editing
-                </span>
-                <div className="flex gap-1">
-                  <Button
-                    color="primary"
-                    size="sm"
-                    variant="flat"
-                    onPress={handleSaveEdit}
-                  >
-                    Save
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="flat"
-                    onPress={() => setIsEditing(false)}
-                  >
-                    Cancel
-                  </Button>
-                </div>
-              </div>
-              <div className="flex flex-col gap-2">
-                <Input
-                  label="Label"
-                  placeholder="Field label"
-                  size="sm"
-                  value={editLabel}
-                  onValueChange={setEditLabel}
-                />
-                <Textarea
-                  label="Description"
-                  minRows={2}
-                  placeholder="Field description (optional)"
-                  size="sm"
-                  value={editDescription}
-                  onValueChange={setEditDescription}
-                />
-                <Select
-                  label="Field type"
-                  placeholder="Select type"
-                  selectedKeys={
-                    new Set([
-                      fieldOverrides[propertyPath]?.inputType ?? inputType,
-                    ])
-                  }
-                  size="sm"
-                  onSelectionChange={handleFieldTypeChange}
-                >
-                  {INPUT_TYPE_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.value}>{opt.label}</SelectItem>
-                  ))}
-                </Select>
-                {inputType === "select" && (
-                  <div className="space-y-2">
-                    <span className="text-sm font-medium text-default-600">
-                      Select options (PDF-style)
-                    </span>
-                    {editSelectOptions.map((opt, i) => (
-                      <div key={i} className="flex gap-2">
-                        <Input
-                          placeholder="Value"
-                          size="sm"
-                          value={opt.value}
-                          onValueChange={(v) =>
-                            setEditSelectOptions((prev) => {
-                              const next = [...prev];
-
-                              next[i] = { ...next[i], value: v };
-
-                              return next;
-                            })
-                          }
-                        />
-                        <Input
-                          placeholder="Label"
-                          size="sm"
-                          value={opt.label}
-                          onValueChange={(v) =>
-                            setEditSelectOptions((prev) => {
-                              const next = [...prev];
-
-                              next[i] = { ...next[i], label: v };
-
-                              return next;
-                            })
-                          }
-                        />
-                        <Button
-                          color="danger"
-                          size="sm"
-                          variant="flat"
-                          onPress={() =>
-                            setEditSelectOptions((prev) =>
-                              prev.filter((_, j) => j !== i),
-                            )
-                          }
-                        >
-                          −
-                        </Button>
-                      </div>
-                    ))}
-                    <Button
-                      size="sm"
-                      variant="flat"
-                      onPress={() =>
-                        setEditSelectOptions((prev) => [
-                          ...prev,
-                          {
-                            value: `opt${prev.length + 1}`,
-                            label: `Option ${prev.length + 1}`,
-                          },
-                        ])
-                      }
-                    >
-                      + Add option
-                    </Button>
-                  </div>
-                )}
-                {inputType === "resource" && (
-                  <div className="space-y-2 mt-4 pt-2 border-t border-default-100">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium text-default-600">
-                        Restrict allowed resources
-                      </span>
-                      <Button
-                        color="primary"
-                        size="sm"
-                        variant="flat"
-                        onPress={() => setIsFilterDialogOpen(true)}
-                      >
-                        Advanced filter...
-                      </Button>
-                    </div>
-                    <p className="text-xs text-default-500 mb-2">
-                      Leave empty to allow users to search and select any
-                      resource. If you select resources here, users will only be
-                      able to choose from your selection.
-                    </p>
-
-                    {editSelectOptions.length > 0 ? (
-                      <div className="flex flex-wrap gap-2 mb-1 p-2 bg-default-50 border border-default-200 rounded-lg">
-                        {editSelectOptions.map((opt) => (
-                          <div
-                            key={opt.value}
-                            className="text-xs bg-primary/10 text-primary px-2 py-1 rounded-md"
-                          >
-                            {opt.label}
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="text-xs text-default-400 p-2 border border-dashed border-default-200 rounded-lg text-center">
-                        All resources allowed. Click Advanced filter to
-                        restrict.
-                      </div>
-                    )}
-
-                    <ResourceFilterDialog
-                      classId={
-                        (property as EnrichedSubtemplateProperty).class_id
-                      }
-                      initialSelectedIds={editSelectOptions.map((o) => o.value)}
-                      isOpen={isFilterDialogOpen}
-                      propertyId={propertyId}
-                      onClose={() => setIsFilterDialogOpen(false)}
-                      onSave={(selectedOptions) =>
-                        setEditSelectOptions(selectedOptions)
-                      }
-                    />
-                  </div>
-                )}
-                {inputType === "scale" && (
-                  <div className="grid grid-cols-2 gap-2">
-                    <Input
-                      label="Min"
-                      size="sm"
-                      type="number"
-                      value={String(editScaleConfig.min)}
-                      onValueChange={(v) =>
-                        setEditScaleConfig((prev) => ({
-                          ...prev,
-                          min: Number(v) || 1,
-                        }))
-                      }
-                    />
-                    <Input
-                      label="Max"
-                      size="sm"
-                      type="number"
-                      value={String(editScaleConfig.max)}
-                      onValueChange={(v) =>
-                        setEditScaleConfig((prev) => ({
-                          ...prev,
-                          max: Number(v) || 5,
-                        }))
-                      }
-                    />
-                    <Input
-                      label="Start label (e.g. Difficult)"
-                      placeholder="Optional"
-                      size="sm"
-                      value={editScaleConfig.minLabel ?? ""}
-                      onValueChange={(v) =>
-                        setEditScaleConfig((prev) => ({
-                          ...prev,
-                          minLabel: v || undefined,
-                        }))
-                      }
-                    />
-                    <Input
-                      label="End label (e.g. Easy)"
-                      placeholder="Optional"
-                      size="sm"
-                      value={editScaleConfig.maxLabel ?? ""}
-                      onValueChange={(v) =>
-                        setEditScaleConfig((prev) => ({
-                          ...prev,
-                          maxLabel: v || undefined,
-                        }))
-                      }
-                    />
-                  </div>
-                )}
-              </div>
-            </>
-          )}
-        </div>
-      </AccordionItem>
-    </Accordion>
+  const propertyHasSubtemplateChildren = Boolean(
+    property.subtemplate_properties &&
+      Object.keys(property.subtemplate_properties).length > 0,
   );
+
+  const fieldCustomizeDialog = canEdit && editMode && (
+    <FieldCustomizeDialog
+      hasSubproperties={propertyHasSubtemplateChildren}
+      isOpen={isCustomizeOpen}
+      overrides={overrides}
+      property={property}
+      propertyId={propertyId}
+      propertyPath={propertyPath}
+      resolvedInputType={inputType}
+      onClose={() => setIsCustomizeOpen(false)}
+      onFieldTypeChange={handleFieldTypeChange}
+      onSave={(payload) => onFieldOverride?.(propertyPath, payload)}
+    />
+  );
+
+  const fieldEditSlot =
+    canEdit && editMode ? (
+      <FieldEditButton
+        customized={hasOverrides}
+        fieldLabel={effectiveLabel}
+        onPress={() => setIsCustomizeOpen(true)}
+      />
+    ) : undefined;
 
   const hideControlDuplicateLabel =
     hideLeafLabelInAccordion ||
@@ -753,7 +462,7 @@ export function TemplatePropertyRenderer({
   // Leaf property: render input only
   if (!hasSubproperties) {
     return (
-      <div className="w-full">
+      <div className="min-w-0 w-full">
         <ScidQuestFieldAiChrome
           cardinality={property.cardinality}
           inputType={inputType}
@@ -764,24 +473,26 @@ export function TemplatePropertyRenderer({
           onChange={onChange}
         >
           <DynamicFieldInput
+            editMode={editMode}
             cardinality={property.cardinality}
             classId={property.class_id}
             createLink={property.create_link}
+            description={effectiveDescription}
             fillModeDefaultControls={fillModeDefaultControls}
             hideLabel={hideControlDuplicateLabel}
             inputType={inputType}
             label={effectiveLabel}
-            placeholder={effectiveDescription}
             propertyId={propertyId}
             resourceOptionsScope={propertyPath}
             scaleConfig={scaleConfig}
             selectOptions={selectOptions}
+            trailingSlot={fieldEditSlot}
             value={value}
             onChange={onChange}
             onResourceOptionsSnapshot={handleOrkgResourceOptionsSnapshot}
           />
         </ScidQuestFieldAiChrome>
-        {fieldEditorUi}
+        {fieldCustomizeDialog}
       </div>
     );
   }
@@ -797,20 +508,27 @@ export function TemplatePropertyRenderer({
         .map(([subPropId, subProp]) => (
           <details
             key={subPropId}
-            className="group/subfield rounded-lg border border-default-100 bg-content1"
+            className="q-subfield-card q-depth-border"
+            data-depth={Math.min(depth + 1, 3)}
+            style={depthStyle(depth + 1)}
           >
-            <summary className="flex w-full min-w-0 cursor-pointer list-none items-center justify-between gap-3 border-b border-default-100 bg-default-50/70 px-3 py-2.5 text-left text-sm font-semibold text-default-900 hover:bg-default-50 [&::-webkit-details-marker]:hidden">
+            <summary className="q-subfield-summary">
               <span className="min-w-0 flex-1 break-words pr-1">
                 {fieldOverrides[`${propertyPath}.${subPropId}`]?.label ??
                   subProp.label}
               </span>
               <div className="flex shrink-0 items-center gap-2">
                 {!isOneToOneCardinality(subProp.cardinality) && (
-                  <span className="shrink-0 text-xs font-normal font-mono text-default-500">
+                  <Chip
+                    className="h-5"
+                    color="secondary"
+                    size="sm"
+                    variant="flat"
+                  >
                     {subProp.cardinality}
-                  </span>
+                  </Chip>
                 )}
-                {onRemoveBuiltinProperty && (
+                {onRemoveBuiltinProperty && editMode && (
                   <Button
                     className="h-7 min-w-fit px-2 text-xs font-medium"
                     color="danger"
@@ -829,15 +547,10 @@ export function TemplatePropertyRenderer({
                     Remove
                   </Button>
                 )}
-                <span
-                  aria-hidden
-                  className="shrink-0 text-[10px] leading-none text-default-400 transition-transform duration-200 group-open/subfield:rotate-180"
-                >
-                  ▼
-                </span>
+                <ChevronIcon />
               </div>
             </summary>
-            <div className="overflow-hidden rounded-b-lg border-t border-default-100 bg-background px-3 py-3">
+            <div className="q-subfield-body q-collapsible-content min-w-0">
               <TemplatePropertyRenderer
                 hideLeafLabelInAccordion
                 customBlocks={customBlocks}
@@ -900,30 +613,16 @@ export function TemplatePropertyRenderer({
 
         if (!block) return null;
 
-        const nestedSummaryClass =
-          "flex w-full cursor-pointer list-none items-center justify-between gap-2 border-b border-default-100 bg-default-50/70 px-3 py-2.5 text-left text-sm font-semibold text-default-900 hover:bg-default-50 [&::-webkit-details-marker]:hidden";
-        const summaryChevron = (
-          <span
-            aria-hidden
-            className="shrink-0 text-[10px] leading-none text-default-400 transition-transform duration-200 group-open/subfield:rotate-180"
-          >
-            ▼
-          </span>
-        );
-
         if (block.type === "text") {
           return (
-            <details
-              key={blockId}
-              className="group/subfield rounded-lg border border-default-100 bg-content1 overflow-hidden"
-            >
-              <summary className={nestedSummaryClass}>
+            <details key={blockId} className="q-subfield-card">
+              <summary className="q-subfield-summary">
                 <span className="min-w-0 flex-1 truncate">
                   {block.heading ?? "Text block"}
                 </span>
-                {summaryChevron}
+                <ChevronIcon />
               </summary>
-              <div className="border-t border-default-100 bg-background px-3 py-3">
+              <div className="q-subfield-body q-collapsible-content min-w-0">
                 <TextBlock
                   block={block}
                   editMode={editMode}
@@ -936,15 +635,12 @@ export function TemplatePropertyRenderer({
         }
         if (block.type === "customField") {
           return (
-            <details
-              key={blockId}
-              className="group/subfield rounded-lg border border-default-100 bg-content1 overflow-hidden"
-            >
-              <summary className={nestedSummaryClass}>
+            <details key={blockId} className="q-subfield-card">
+              <summary className="q-subfield-summary">
                 <span className="min-w-0 flex-1 truncate">{block.label}</span>
-                {summaryChevron}
+                <ChevronIcon />
               </summary>
-              <div className="border-t border-default-100 bg-background px-3 py-3">
+              <div className="q-subfield-body q-collapsible-content min-w-0">
                 <CustomFieldBlock
                   block={block}
                   editMode={editMode}
@@ -966,15 +662,12 @@ export function TemplatePropertyRenderer({
         }
         if (block.type === "html") {
           return (
-            <details
-              key={blockId}
-              className="group/subfield rounded-lg border border-default-100 bg-content1 overflow-hidden"
-            >
-              <summary className={nestedSummaryClass}>
+            <details key={blockId} className="q-subfield-card">
+              <summary className="q-subfield-summary">
                 <span className="min-w-0 flex-1">HTML block</span>
-                {summaryChevron}
+                <ChevronIcon />
               </summary>
-              <div className="border-t border-default-100 bg-background px-3 py-3">
+              <div className="q-subfield-body q-collapsible-content min-w-0">
                 <HtmlBlock
                   block={block}
                   editMode={editMode}
@@ -987,15 +680,12 @@ export function TemplatePropertyRenderer({
         }
         if (block.type === "section") {
           return (
-            <details
-              key={blockId}
-              className="group/subfield rounded-lg border border-default-100 bg-content1 overflow-hidden"
-            >
-              <summary className={nestedSummaryClass}>
+            <details key={blockId} className="q-subfield-card">
+              <summary className="q-subfield-summary">
                 <span className="min-w-0 flex-1 truncate">{block.title}</span>
-                {summaryChevron}
+                <ChevronIcon />
               </summary>
-              <div className="border-t border-default-100 bg-background px-3 py-3">
+              <div className="q-subfield-body q-collapsible-content min-w-0">
                 <SectionBlock
                   block={block}
                   childBlocks={(block.childIds ?? [])
@@ -1039,7 +729,7 @@ export function TemplatePropertyRenderer({
   );
 
   return (
-    <div className="w-full space-y-4">
+    <div className="min-w-0 w-full space-y-4">
       {!hideRootScalarInput ? (
         <ScidQuestFieldAiChrome
           cardinality={property.cardinality}
@@ -1051,9 +741,11 @@ export function TemplatePropertyRenderer({
           onChange={onChange}
         >
           <DynamicFieldInput
+            editMode={editMode}
             cardinality={property.cardinality}
             classId={property.class_id}
             createLink={property.create_link}
+            description={effectiveDescription}
             fillModeDefaultControls={fillModeDefaultControls}
             hideLabel={
               hideLeafLabelInAccordion ||
@@ -1061,25 +753,27 @@ export function TemplatePropertyRenderer({
             }
             inputType={inputType}
             label={effectiveLabel}
-            placeholder={effectiveDescription}
             propertyId={propertyId}
             resourceOptionsScope={propertyPath}
             scaleConfig={scaleConfig}
             selectOptions={selectOptions}
+            trailingSlot={fieldEditSlot}
             value={value}
             onChange={onChange}
             onResourceOptionsSnapshot={handleOrkgResourceOptionsSnapshot}
           />
         </ScidQuestFieldAiChrome>
       ) : null}
-      {fieldEditorUi}
-      <div className="rounded-xl border border-default-100 bg-background overflow-hidden shadow-none">
-        {effectiveDescription && (
-          <p className="border-b border-default-100 bg-default-50/30 px-4 py-3 text-sm text-default-600 leading-relaxed">
-            {effectiveDescription}
-          </p>
+      {fieldCustomizeDialog}
+      <div className="rounded-xl border border-default-100 bg-background overflow-hidden">
+        {descriptionDiffersFromLabel(effectiveDescription, effectiveLabel) && (
+          <div className="border-b border-default-100 bg-default-50/40 px-4 py-3">
+            <p className="text-sm text-default-600 leading-relaxed">
+              {effectiveDescription}
+            </p>
+          </div>
         )}
-        <div className="flex flex-col gap-2 p-3 sm:p-4">{subFieldRows}</div>
+        <div className="flex min-w-0 flex-col gap-3 p-4">{subFieldRows}</div>
         {editMode && onAddNestedBlock && (
           <Dropdown
             className="border-t border-default-100 p-3"
