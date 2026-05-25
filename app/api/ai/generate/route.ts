@@ -17,14 +17,17 @@ interface GenerateTextRequestBody {
   systemContext?: string;
 }
 
+const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
+const SCIDQUEST_MODEL = "openai/gpt-4o-mini";
+
 export async function POST(request: Request) {
-  const apiKey = process.env.OPENAI_API_KEY?.trim();
+  const apiKey = process.env.OPEN_ROUTER_KEY?.trim();
 
   if (!apiKey) {
     return NextResponse.json(
       {
         error:
-          "Add OPENAI_API_KEY to .env.local in the project root and restart the dev server. See .env.example for the variable name.",
+          "Add OPEN_ROUTER_KEY to .env.local in the project root and restart the dev server. See .env.example for the variable name.",
       },
       { status: 503 },
     );
@@ -48,8 +51,11 @@ export async function POST(request: Request) {
   }
 
   try {
-    const openai = createOpenAI({ apiKey });
-    const model = openai("gpt-4o-mini");
+    const openrouter = createOpenAI({
+      apiKey,
+      baseURL: OPENROUTER_BASE_URL,
+    });
+    const model = openrouter(SCIDQUEST_MODEL);
     const result = await generateText({
       model,
       system: systemContext,
