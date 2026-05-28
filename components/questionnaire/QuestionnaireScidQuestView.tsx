@@ -4,16 +4,23 @@ import type { ComponentProps, SetStateAction } from "react";
 import type { ScidQuestQuestionnaireTemplate } from "@/lib/orkg-to-scidquest-adapter";
 import type { FormValue } from "./questionnaire-form-types";
 
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { Button } from "@heroui/button";
 import { Spinner } from "@heroui/spinner";
-import { ResearchQuestionnaireApp } from "@orkg/scidquest";
 
 import { QuestionnaireForm } from "./QuestionnaireForm";
-import { ScidQuestProviders } from "./ScidQuestProviders";
 
 import { defaultScidQuestPdfTextExtractor } from "@/lib/scidquest-pdf-text-extractor";
+
+const ScidQuestProviders = dynamic(
+  () =>
+    import("./ScidQuestProviders").then((mod) => ({
+      default: mod.ScidQuestProviders,
+    })),
+  { ssr: false },
+);
 
 type QuestionnaireFormProps = ComponentProps<typeof QuestionnaireForm>;
 
@@ -30,6 +37,23 @@ export function QuestionnaireScidQuestView({
   formProps,
   templateSpec,
 }: QuestionnaireScidQuestViewProps) {
+  const [ResearchQuestionnaireApp, setResearchQuestionnaireApp] =
+    useState<React.ComponentType<any> | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void import("@orkg/scidquest").then((mod) => {
+      if (!cancelled) {
+        setResearchQuestionnaireApp(() => mod.ResearchQuestionnaireApp);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const setAnswers = useCallback(
     (next: SetStateAction<Record<string, unknown>>) => {
       const prev = formProps.values as Record<string, unknown>;
@@ -52,7 +76,7 @@ export function QuestionnaireScidQuestView({
     [formProps],
   );
 
-  if (!templateSpec) {
+  if (!templateSpec || !ResearchQuestionnaireApp) {
     return (
       <section className="flex flex-1 flex-col items-center justify-center gap-3 py-12">
         <Spinner label="Preparing ScidQuest template…" />

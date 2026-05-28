@@ -2,12 +2,17 @@
 
 import type { TemplateListItem } from "@/lib/orkg-templates";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Card, CardBody } from "@heroui/card";
 import { Input } from "@heroui/input";
 import { Button } from "@heroui/button";
 import { Spinner } from "@heroui/spinner";
 import { Chip } from "@heroui/chip";
+
+import {
+  RAW_TEMPLATE_SESSION_KEY,
+  parseRawTemplateInput,
+} from "../lib/raw-template";
 
 import { getOrkgResourceLink } from "@/lib/orkg-links";
 
@@ -33,7 +38,10 @@ export function TemplateSelector() {
   const [total, setTotal] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [directId, setDirectId] = useState("");
+  const [isUploadingRawTemplate, setIsUploadingRawTemplate] = useState(false);
+  const [isDragOverRawTemplate, setIsDragOverRawTemplate] = useState(false);
   const [loadingQId, setLoadingQId] = useState<string | null>(null);
+  const rawTemplateFileInputRef = useRef<HTMLInputElement | null>(null);
   const debouncedQuery = useDebounce(query, 300);
 
   const fetchTemplates = useCallback(async (q: string) => {
@@ -130,6 +138,45 @@ export function TemplateSelector() {
     window.location.href = `/questionnaire/${templateId}`;
   };
 
+  const processRawTemplateFile = useCallback(async (file: File | null) => {
+    if (!file) return;
+
+    setError(null);
+    setIsUploadingRawTemplate(true);
+    try {
+      const text = await file.text();
+      const parsed = parseRawTemplateInput(text);
+
+      sessionStorage.setItem(RAW_TEMPLATE_SESSION_KEY, JSON.stringify(parsed));
+      window.location.href = "/questionnaire/raw";
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Invalid raw template JSON file. Please check the file content.",
+      );
+    } finally {
+      setIsUploadingRawTemplate(false);
+    }
+  }, []);
+
+  const handleRawTemplateFileUpload = async (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = event.target.files?.[0] ?? null;
+
+    await processRawTemplateFile(file);
+    event.target.value = "";
+  };
+
+  const handleRawTemplateDrop = async (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setIsDragOverRawTemplate(false);
+    const file = event.dataTransfer.files?.[0] ?? null;
+
+    await processRawTemplateFile(file);
+  };
+
   return (
     <div className="flex flex-col gap-8 w-full max-w-4xl mx-auto">
       <div className="flex flex-col gap-6">
@@ -197,6 +244,71 @@ export function TemplateSelector() {
             Open questionnaire
           </Button>
         </form>
+
+        <Card className="border border-default-200 shadow-sm">
+          <CardBody className="gap-4">
+            <div className="flex flex-col gap-1">
+              <h3 className="text-base font-semibold text-foreground">
+                Use raw JSON template
+              </h3>
+              <p className="text-sm text-default-500">
+                Upload or drag-and-drop a `.json` template file to open the
+                questionnaire directly.
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-3">
+              <div
+                className={`rounded-xl border-2 border-dashed px-4 py-6 text-center transition-colors ${
+                  isDragOverRawTemplate
+                    ? "border-secondary bg-secondary/10"
+                    : "border-default-300 bg-default-50"
+                }`}
+                role="button"
+                tabIndex={0}
+                onClick={() => rawTemplateFileInputRef.current?.click()}
+                onDragOver={(event) => {
+                  event.preventDefault();
+                  setIsDragOverRawTemplate(true);
+                }}
+                onDragLeave={() => setIsDragOverRawTemplate(false)}
+                onDrop={handleRawTemplateDrop}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    rawTemplateFileInputRef.current?.click();
+                  }
+                }}
+              >
+                <input
+                  ref={rawTemplateFileInputRef}
+                  accept=".json,application/json"
+                  className="hidden"
+                  type="file"
+                  onChange={handleRawTemplateFileUpload}
+                />
+                <p className="text-sm font-medium text-foreground">
+                  Drag & drop JSON file here
+                </p>
+                <p className="mt-1 text-xs text-default-500">
+                  or click to choose a file
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <Button
+                  className="font-medium"
+                  color="primary"
+                  isLoading={isUploadingRawTemplate}
+                  type="button"
+                  variant="flat"
+                  onPress={() => rawTemplateFileInputRef.current?.click()}
+                >
+                  Upload JSON file
+                </Button>
+              </div>
+            </div>
+          </CardBody>
+        </Card>
       </div>
 
       {error && (

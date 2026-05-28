@@ -3,12 +3,9 @@
 import type { InputType } from "@/types/template";
 import type { SelectOption } from "./questionnaire-form-types";
 import type { ReactNode } from "react";
+import type { ResearchFieldAiQuestionType } from "@orkg/scidquest";
 
-import { memo } from "react";
-import {
-  ResearchQuestionnaireFieldAiWrapper,
-  type ResearchFieldAiQuestionType,
-} from "@orkg/scidquest";
+import { memo, useEffect, useState } from "react";
 
 import {
   dedupeOrkgResourceIris,
@@ -213,12 +210,51 @@ export const ScidQuestFieldAiChrome = memo(function ScidQuestFieldAiChrome({
   selectOptions?: SelectOption[];
   cardinality?: string;
 }) {
+  const [AiWrapper, setAiWrapper] = useState<
+    React.ComponentType<{
+      children: ReactNode;
+      currentAnswer: string;
+      questionId: string;
+      questionOptions?: string[];
+      questionText: string;
+      questionType: ResearchFieldAiQuestionType;
+      onApplySuggestion: (text: string) => void;
+    }> | null
+  >(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void import("@orkg/scidquest")
+      .then((mod) => {
+        if (cancelled) return;
+        const wrapper = mod.ResearchQuestionnaireFieldAiWrapper;
+
+        if (typeof wrapper === "function") {
+          setAiWrapper(() => wrapper);
+        } else {
+          setAiWrapper(null);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setAiWrapper(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const questionType = mapToAiQuestionType(inputType, cardinality);
   const questionOptions =
     selectOptions?.map((o) => o.label || o.value).filter(Boolean) ?? [];
 
+  if (typeof AiWrapper !== "function") {
+    return <div className="min-w-0 w-full">{children}</div>;
+  }
+
   return (
-    <ResearchQuestionnaireFieldAiWrapper
+    <AiWrapper
       currentAnswer={fieldValueToLlmAnswerString(
         value,
         inputType,
@@ -240,6 +276,6 @@ export const ScidQuestFieldAiChrome = memo(function ScidQuestFieldAiChrome({
       }}
     >
       <div className="min-w-0 w-full">{children}</div>
-    </ResearchQuestionnaireFieldAiWrapper>
+    </AiWrapper>
   );
 });

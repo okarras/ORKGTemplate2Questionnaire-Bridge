@@ -340,6 +340,10 @@ export function DynamicFieldInput({
   trailingSlot,
 }: DynamicFieldInputProps) {
   const id = `field-${propertyId}`;
+  const fieldLabel =
+    typeof label === "string" && label.trim().length > 0
+      ? label
+      : propertyId || "field";
   const multiselect = isOneToMany(cardinality);
   const [selectOpen, setSelectOpen] = useState(false);
   const [defaultPickerOpen, setDefaultPickerOpen] = useState(false);
@@ -360,9 +364,9 @@ export function DynamicFieldInput({
   }, [selectOptions]);
   const useExternalLabel = Boolean(trailingSlot);
   const visibleLabel = hideLabel ? (
-    <span className="sr-only">{label}</span>
+    <span className="sr-only">{fieldLabel}</span>
   ) : (
-    <FieldLabel classId={classId} label={label} propertyId={propertyId} />
+    <FieldLabel classId={classId} label={fieldLabel} propertyId={propertyId} />
   );
 
   /** Generic hint placeholder — never the description */
@@ -371,9 +375,9 @@ export function DynamicFieldInput({
     (() => {
       switch (inputType) {
         case "text":
-          return `Enter ${label.toLowerCase()}…`;
+          return `Enter ${fieldLabel.toLowerCase()}…`;
         case "textarea":
-          return `Enter ${label.toLowerCase()}…`;
+          return `Enter ${fieldLabel.toLowerCase()}…`;
         case "number":
           return "Enter number…";
         case "date":
@@ -381,7 +385,7 @@ export function DynamicFieldInput({
         case "select":
           return multiselect ? `Select one or more…` : `Select an option…`;
         default:
-          return `Enter ${label.toLowerCase()}…`;
+          return `Enter ${fieldLabel.toLowerCase()}…`;
       }
     })();
 
@@ -389,18 +393,18 @@ export function DynamicFieldInput({
     case "text":
       return (
         <div className="q-field-card flex min-w-0 flex-col gap-1.5">
-          <FieldDescription label={label} text={description} />
+          <FieldDescription label={fieldLabel} text={description} />
           {useExternalLabel ? (
             <FieldLabelRow
               classId={classId}
               hideLabel={hideLabel}
-              label={label}
+              label={fieldLabel}
               propertyId={propertyId}
             />
           ) : null}
           <FieldControlRow trailing={trailingSlot}>
             <DebouncedTextField
-              ariaLabel={hideLabel || useExternalLabel ? label : undefined}
+              ariaLabel={hideLabel || useExternalLabel ? fieldLabel : undefined}
               classNames={textInputClassNames}
               id={id}
               label={useExternalLabel || hideLabel ? undefined : visibleLabel}
@@ -420,19 +424,19 @@ export function DynamicFieldInput({
     case "textarea":
       return (
         <div className="q-field-card flex min-w-0 flex-col gap-1.5">
-          <FieldDescription label={label} text={description} />
+          <FieldDescription label={fieldLabel} text={description} />
           {useExternalLabel ? (
             <FieldLabelRow
               classId={classId}
               hideLabel={hideLabel}
-              label={label}
+              label={fieldLabel}
               propertyId={propertyId}
             />
           ) : null}
           <FieldControlRow trailing={trailingSlot}>
             <DebouncedTextField
               multiline
-              ariaLabel={hideLabel || useExternalLabel ? label : undefined}
+              ariaLabel={hideLabel || useExternalLabel ? fieldLabel : undefined}
               classNames={textInputClassNames}
               id={id}
               label={useExternalLabel || hideLabel ? undefined : visibleLabel}
@@ -452,18 +456,18 @@ export function DynamicFieldInput({
     case "number":
       return (
         <div className="q-field-card flex min-w-0 flex-col gap-1.5">
-          <FieldDescription label={label} text={description} />
+          <FieldDescription label={fieldLabel} text={description} />
           {useExternalLabel ? (
             <FieldLabelRow
               classId={classId}
               hideLabel={hideLabel}
-              label={label}
+              label={fieldLabel}
               propertyId={propertyId}
             />
           ) : null}
           <FieldControlRow trailing={trailingSlot}>
             <Input
-              aria-label={hideLabel || useExternalLabel ? label : undefined}
+              aria-label={hideLabel || useExternalLabel ? fieldLabel : undefined}
               className={fieldInputClass}
               classNames={textInputClassNames}
               id={id}
@@ -514,18 +518,20 @@ export function DynamicFieldInput({
 
       return (
         <div className="q-field-card flex min-w-0 flex-col gap-1.5">
-          <FieldDescription label={label} text={description} />
+          <FieldDescription label={fieldLabel} text={description} />
           {useExternalLabel ? (
             <FieldLabelRow
               classId={classId}
               hideLabel={hideLabel}
-              label={label}
+              label={fieldLabel}
               propertyId={propertyId}
             />
           ) : null}
           <FieldControlRow trailing={trailingSlot}>
             <Select
-              aria-label={hideLabel || useExternalLabel ? label : undefined}
+              aria-label={
+                hideLabel || useExternalLabel ? fieldLabel : undefined
+              }
               className={fieldInputClass}
               classNames={selectTriggerClassNames}
               id={id}
@@ -626,10 +632,10 @@ export function DynamicFieldInput({
           <FieldLabelRow
             classId={undefined}
             hideLabel={hideLabel}
-            label={label}
+            label={fieldLabel}
             propertyId={propertyId}
           />
-          <FieldDescription label={label} text={description} />
+          <FieldDescription label={fieldLabel} text={description} />
           <FieldControlRow trailing={trailingSlot}>
             <RadioGroup
               classNames={{ wrapper: "flex-wrap gap-2" }}
@@ -663,11 +669,11 @@ export function DynamicFieldInput({
 
       return (
         <div className="q-field-card flex min-w-0 flex-col gap-1.5">
-          <FieldDescription label={label} text={description} />
+          <FieldDescription label={fieldLabel} text={description} />
           <FieldLabelRow
             classId={classId}
             hideLabel={hideLabel}
-            label={label}
+            label={fieldLabel}
             propertyId={propertyId}
           />
           <FieldControlRow trailing={trailingSlot}>
@@ -675,7 +681,7 @@ export function DynamicFieldInput({
               className={`q-boolean-field w-full ${isOn ? "q-boolean-field--on" : ""}`}
             >
               <Switch
-                aria-label={hideLabel ? label : undefined}
+                aria-label={hideLabel ? fieldLabel : undefined}
                 className={fieldInputClass}
                 classNames={booleanSwitchClassNames}
                 id={id}
@@ -697,18 +703,18 @@ export function DynamicFieldInput({
     case "date":
       return (
         <div className="q-field-card flex min-w-0 flex-col gap-1.5">
-          <FieldDescription label={label} text={description} />
+          <FieldDescription label={fieldLabel} text={description} />
           {useExternalLabel ? (
             <FieldLabelRow
               classId={classId}
               hideLabel={hideLabel}
-              label={label}
+              label={fieldLabel}
               propertyId={propertyId}
             />
           ) : null}
           <FieldControlRow trailing={trailingSlot}>
             <Input
-              aria-label={hideLabel || useExternalLabel ? label : undefined}
+              aria-label={hideLabel || useExternalLabel ? fieldLabel : undefined}
               className={fieldInputClass}
               classNames={textInputClassNames}
               id={id}
@@ -731,12 +737,12 @@ export function DynamicFieldInput({
     case "resource":
       return (
         <div className="q-field-card flex min-w-0 flex-col gap-1.5">
-          <FieldDescription label={label} text={description} />
+          <FieldDescription label={fieldLabel} text={description} />
           {useExternalLabel ? (
             <FieldLabelRow
               classId={classId}
               hideLabel={hideLabel}
-              label={label}
+              label={fieldLabel}
               propertyId={propertyId}
             />
           ) : null}
@@ -744,7 +750,7 @@ export function DynamicFieldInput({
             <ResourceAutoselect
               classId={classId}
               hideLabel={hideLabel || useExternalLabel}
-              label={label}
+              label={fieldLabel}
               multiselect={multiselect}
               optionsScopeKey={resourceOptionsScope ?? propertyId}
               placeholder={hintPlaceholder}
@@ -772,18 +778,18 @@ export function DynamicFieldInput({
     default:
       return (
         <div className="q-field-card flex min-w-0 flex-col gap-1.5">
-          <FieldDescription label={label} text={description} />
+          <FieldDescription label={fieldLabel} text={description} />
           {useExternalLabel ? (
             <FieldLabelRow
               classId={classId}
               hideLabel={hideLabel}
-              label={label}
+              label={fieldLabel}
               propertyId={propertyId}
             />
           ) : null}
           <FieldControlRow trailing={trailingSlot}>
             <DebouncedTextField
-              ariaLabel={hideLabel || useExternalLabel ? label : undefined}
+              ariaLabel={hideLabel || useExternalLabel ? fieldLabel : undefined}
               classNames={textInputClassNames}
               id={id}
               label={useExternalLabel || hideLabel ? undefined : visibleLabel}
