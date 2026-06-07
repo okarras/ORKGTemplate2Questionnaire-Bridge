@@ -13,6 +13,7 @@ import { Spinner } from "@heroui/spinner";
 import { QuestionnaireForm } from "./QuestionnaireForm";
 
 import { defaultScidQuestPdfTextExtractor } from "@/lib/scidquest-pdf-text-extractor";
+import { ensureReactPdfWorkerConfigured } from "@/lib/pdf-worker";
 
 const ScidQuestProviders = dynamic(
   () =>
@@ -39,15 +40,30 @@ export function QuestionnaireScidQuestView({
 }: QuestionnaireScidQuestViewProps) {
   const [ResearchQuestionnaireApp, setResearchQuestionnaireApp] =
     useState<React.ComponentType<any> | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
 
-    void import("@orkg/scidquest").then((mod) => {
-      if (!cancelled) {
-        setResearchQuestionnaireApp(() => mod.ResearchQuestionnaireApp);
+    void (async () => {
+      try {
+        const mod = await import("@orkg/scidquest");
+
+        await ensureReactPdfWorkerConfigured();
+
+        if (!cancelled) {
+          setResearchQuestionnaireApp(() => mod.ResearchQuestionnaireApp);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setLoadError(
+            error instanceof Error
+              ? error.message
+              : "Failed to load ScidQuest",
+          );
+        }
       }
-    });
+    })();
 
     return () => {
       cancelled = true;
@@ -75,6 +91,17 @@ export function QuestionnaireScidQuestView({
     (_ctx: unknown) => <QuestionnaireForm {...formProps} />,
     [formProps],
   );
+
+  if (loadError) {
+    return (
+      <section className="flex flex-1 flex-col items-center justify-center gap-3 px-6 py-12 text-center">
+        <p className="text-danger">Failed to load ScidQuest: {loadError}</p>
+        <Button as={Link} color="primary" href="/" size="sm" variant="flat">
+          ← Back to templates
+        </Button>
+      </section>
+    );
+  }
 
   if (!templateSpec || !ResearchQuestionnaireApp) {
     return (

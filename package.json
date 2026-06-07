@@ -3,8 +3,8 @@
   "version": "0.0.1",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
+    "dev": "node ./scripts/copy-pdf-worker.mjs && next dev",
+    "build": "node ./scripts/copy-pdf-worker.mjs && next build",
     "start": "next start",
     "lint": "eslint --fix",
     "scidquest:build": "npm run build --prefix ../../ScidQuest"
@@ -72,8 +72,9 @@
     "next": "15.5.9",
     "next-themes": "0.4.6",
     "pdf-lib": "^1.17.1",
-    "pdfjs-dist": "^5.4.296",
+    "pdfjs-dist": "5.4.296",
     "react": "^19.0.0",
+    "react-pdf": "^10.3.0",
     "react-dom": "^19.0.0",
     "react-redux": "^9.2.0",
     "zod": "^3.24.0"
@@ -104,5 +105,8 @@
     "tailwind-variants": "3.2.2",
     "tailwindcss": "4.1.11",
     "typescript": "5.6.3"
+  },
+  "overrides": {
+    "pdfjs-dist": "5.4.296"
   }
 }

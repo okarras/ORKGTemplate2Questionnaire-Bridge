@@ -6,7 +6,9 @@
  * The legacy build is webpack-friendly; load it only on first extraction.
  */
 
-type PdfLegacy = typeof import("pdfjs-dist/legacy/build/pdf.mjs");
+import { PDF_LEGACY_WORKER_SRC } from "./pdf-worker";
+
+type PdfLegacy = typeof import("pdfjs-dist");
 type PdfDocument = Awaited<
   ReturnType<PdfLegacy["getDocument"]> extends { promise: infer P }
     ? P
@@ -18,13 +20,13 @@ let workerConfigured = false;
 
 async function loadPdfLegacy(): Promise<PdfLegacy> {
   if (!pdfLegacyPromise) {
-    pdfLegacyPromise = import("pdfjs-dist/legacy/build/pdf.mjs");
+    pdfLegacyPromise = import("pdfjs-dist");
   }
 
   const pdfjs = await pdfLegacyPromise;
 
   if (typeof window !== "undefined" && !workerConfigured) {
-    pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist/${pdfjs.version}/legacy/build/pdf.worker.mjs`;
+    pdfjs.GlobalWorkerOptions.workerSrc = PDF_LEGACY_WORKER_SRC;
     workerConfigured = true;
   }
 
