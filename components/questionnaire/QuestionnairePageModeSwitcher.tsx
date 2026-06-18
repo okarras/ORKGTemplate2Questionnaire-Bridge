@@ -260,7 +260,7 @@ export function QuestionnairePageModeSwitcher({
   }, [mapping, templateId, label]);
 
   return (
-    <section className="flex h-[calc(100dvh-140px)] max-h-[calc(100dvh-140px)] min-h-0 w-full flex-col overflow-x-hidden [scrollbar-gutter:stable]">
+    <section className="flex min-h-0 w-full flex-grow flex-col overflow-x-hidden h-[calc(100dvh-64px)] max-h-[calc(100dvh-64px)] [scrollbar-gutter:stable]">
       <div className="flex shrink-0 items-center justify-end gap-3 px-6 pb-4 pt-0 md:px-10">
         <Button
           color="success"
@@ -328,7 +328,7 @@ export function QuestionnairePageModeSwitcher({
         aria-hidden={mode !== "scidquest"}
         className={
           mode === "scidquest"
-            ? "flex min-h-0 w-full flex-1 flex-col overflow-hidden"
+            ? "flex min-h-0 w-full flex-1 flex-col overflow-hidden px-0"
             : "hidden"
         }
       >

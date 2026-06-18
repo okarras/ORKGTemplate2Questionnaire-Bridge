@@ -112,21 +112,8 @@ export function QuestionnaireScidQuestView({
   }
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      <div className="mb-3 shrink-0 px-6 pt-4 md:px-10">
-        <Button
-          as={Link}
-          className="w-fit"
-          color="primary"
-          href="/"
-          size="sm"
-          variant="flat"
-        >
-          ← Back to templates
-        </Button>
-      </div>
-
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden px-6 pb-6 md:px-10">
+    <section className="flex min-h-0 w-full flex-1 flex-col overflow-hidden">
+      <div className="flex min-h-0 min-w-0 w-full flex-1 flex-col overflow-hidden">
         <ScidQuestProviders>
           <ResearchQuestionnaireApp
             answers={formProps.values as Record<string, unknown>}
@@ -137,6 +124,9 @@ export function QuestionnaireScidQuestView({
               flex: 1,
               minHeight: 0,
               minWidth: 0,
+              width: '100%',
+              height: '100%',
+              overflow: 'hidden',
             }}
             templateSpec={templateSpec}
           />

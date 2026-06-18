@@ -210,17 +210,17 @@ export const ScidQuestFieldAiChrome = memo(function ScidQuestFieldAiChrome({
   selectOptions?: SelectOption[];
   cardinality?: string;
 }) {
-  const [AiWrapper, setAiWrapper] = useState<
-    React.ComponentType<{
-      children: ReactNode;
-      currentAnswer: string;
-      questionId: string;
-      questionOptions?: string[];
-      questionText: string;
-      questionType: ResearchFieldAiQuestionType;
-      onApplySuggestion: (text: string) => void;
-    }> | null
-  >(null);
+  const [AiWrapper, setAiWrapper] = useState<React.ComponentType<{
+    children: ReactNode;
+    currentAnswer: string;
+    questionId: string;
+    questionOptions?: string[];
+    questionText: string;
+    questionType: ResearchFieldAiQuestionType;
+    onApplySuggestion: (text: string) => void;
+    aiLayout?: "menu" | "buttons" | "both";
+    aiActions?: Array<"suggest" | "verify" | "history" | "config">;
+  }> | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -255,6 +255,8 @@ export const ScidQuestFieldAiChrome = memo(function ScidQuestFieldAiChrome({
 
   return (
     <AiWrapper
+      aiActions={["suggest", "verify"]}
+      aiLayout="buttons"
       currentAnswer={fieldValueToLlmAnswerString(
         value,
         inputType,
