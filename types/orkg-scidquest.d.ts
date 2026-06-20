@@ -108,13 +108,9 @@ declare module "@orkg/scidquest" {
     setAnswers?: Dispatch<SetStateAction<Record<string, unknown>>>;
     multiple?: boolean;
     maxFiles?: number;
-    /** Controlled files state (host manages persistence). */
     controlledFiles?: UploadedPdf[];
-    /** Controlled active file ID. */
     controlledActiveFileId?: string | null;
-    /** Callback when files change. */
     onFilesChange?: (files: UploadedPdf[]) => void;
-    /** Callback when active file changes. */
     onActiveFileIdChange?: (id: string | null) => void;
   }): ReactNode;
 
