@@ -80,6 +80,17 @@ declare module "@orkg/scidquest" {
     props: Record<string, unknown>,
   ): ReactNode;
 
+  export interface UploadedPdf {
+    id: string;
+    name: string;
+    size: number;
+    url: string;
+    extractionStatus: "idle" | "extracting" | "done" | "error";
+    extractedText?: string;
+    structuredDocument?: unknown | null;
+    extractionError?: Error | null;
+  }
+
   export function ResearchQuestionnaireApp(props: {
     templateSpec: unknown;
     pdfTextExtractor?: {
@@ -95,6 +106,12 @@ declare module "@orkg/scidquest" {
     questionnaireSlot?: (ctx: Record<string, unknown>) => ReactNode;
     answers?: Record<string, unknown>;
     setAnswers?: Dispatch<SetStateAction<Record<string, unknown>>>;
+    multiple?: boolean;
+    maxFiles?: number;
+    controlledFiles?: UploadedPdf[];
+    controlledActiveFileId?: string | null;
+    onFilesChange?: (files: UploadedPdf[]) => void;
+    onActiveFileIdChange?: (id: string | null) => void;
   }): ReactNode;
 
   export function AIAssistantButton(
@@ -102,4 +119,18 @@ declare module "@orkg/scidquest" {
   ): ReactNode;
 
   export function SuggestionBox(props: Record<string, unknown>): ReactNode;
+
+  export function PdfFileTabsConnected(): ReactNode;
+
+  export const pdfFileStore: {
+    getState(): { files: UploadedPdf[]; activeFileId: string | null };
+    subscribe(listener: () => void): () => void;
+    addFiles(files: UploadedPdf[]): void;
+    removeFile(id: string): void;
+    setActiveFileId(id: string): void;
+    updateFile(id: string, updates: Partial<UploadedPdf>): void;
+    reset(): void;
+  };
+
+  export function usePdfFileStore(): { files: UploadedPdf[]; activeFileId: string | null };
 }

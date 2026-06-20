@@ -4,24 +4,15 @@ import type { ComponentProps, SetStateAction } from "react";
 import type { ScidQuestQuestionnaireTemplate } from "@/lib/orkg-to-scidquest-adapter";
 import type { FormValue } from "./questionnaire-form-types";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import dynamic from "next/dynamic";
 import { Button } from "@heroui/button";
 import { Spinner } from "@heroui/spinner";
 
 import { QuestionnaireForm } from "./QuestionnaireForm";
-
 import { defaultScidQuestPdfTextExtractor } from "@/lib/scidquest-pdf-text-extractor";
 import { ensureReactPdfWorkerConfigured } from "@/lib/pdf-worker";
-
-const ScidQuestProviders = dynamic(
-  () =>
-    import("./ScidQuestProviders").then((mod) => ({
-      default: mod.ScidQuestProviders,
-    })),
-  { ssr: false },
-);
+import { ScidQuestProviders } from "./ScidQuestProviders";
 
 type QuestionnaireFormProps = ComponentProps<typeof QuestionnaireForm>;
 
@@ -40,6 +31,8 @@ export function QuestionnaireScidQuestView({
 }: QuestionnaireScidQuestViewProps) {
   const [ResearchQuestionnaireApp, setResearchQuestionnaireApp] =
     useState<React.ComponentType<any> | null>(null);
+  const [PdfFileTabsConnected, setPdfFileTabsConnected] =
+    useState<React.ComponentType | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -53,6 +46,9 @@ export function QuestionnaireScidQuestView({
 
         if (!cancelled) {
           setResearchQuestionnaireApp(() => mod.ResearchQuestionnaireApp);
+          if (mod.PdfFileTabsConnected) {
+            setPdfFileTabsConnected(() => mod.PdfFileTabsConnected);
+          }
         }
       } catch (error) {
         if (!cancelled) {
@@ -64,25 +60,24 @@ export function QuestionnaireScidQuestView({
         }
       }
     })();
-
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, []);
+
+  const formValuesRef = useRef(formProps.values);
+  formValuesRef.current = formProps.values;
+  const onValuesChangeRef = useRef(formProps.onValuesChange);
+  onValuesChangeRef.current = formProps.onValuesChange;
 
   const setAnswers = useCallback(
     (next: SetStateAction<Record<string, unknown>>) => {
-      const prev = formProps.values as Record<string, unknown>;
+      const prev = formValuesRef.current as Record<string, unknown>;
       const resolved =
         typeof next === "function"
-          ? (next as (p: Record<string, unknown>) => Record<string, unknown>)(
-              prev,
-            )
+          ? (next as (p: Record<string, unknown>) => Record<string, unknown>)(prev)
           : next;
-
-      formProps.onValuesChange?.(resolved as Record<string, FormValue>);
+      onValuesChangeRef.current?.(resolved as Record<string, FormValue>);
     },
-    [formProps.values, formProps.onValuesChange],
+    [],
   );
 
   const pdfTextExtractor = useMemo(() => defaultScidQuestPdfTextExtractor, []);
@@ -115,6 +110,10 @@ export function QuestionnaireScidQuestView({
     <section className="flex min-h-0 w-full flex-1 flex-col overflow-hidden">
       <div className="flex min-h-0 min-w-0 w-full flex-1 flex-col overflow-hidden">
         <ScidQuestProviders>
+          {/* File tabs from library — rendered OUTSIDE ResearchQuestionnaireApp
+              so they survive its remounts. Uses external store. */}
+          {PdfFileTabsConnected && <PdfFileTabsConnected />}
+
           <ResearchQuestionnaireApp
             answers={formProps.values as Record<string, unknown>}
             pdfTextExtractor={pdfTextExtractor}
